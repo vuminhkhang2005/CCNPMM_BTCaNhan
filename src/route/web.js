@@ -6,7 +6,14 @@ let router = express.Router(); //khởi tạo Route
 let initWebRoutes = (app) => {
     //cách 1:
     router.get('/', (req, res) => {
-        return res.send('Vũ Minh Khang - 23110238');
+        return res.send(`
+            <div style="text-align:center; margin-top:80px; font-family:Arial,sans-serif;">
+                <h1>Vũ Minh Khang - MSSV: 23110238</h1>
+                <p>CRUD Express.js – Sequelize – MySQL</p>
+                <a href="/crud" style="display:inline-block; margin:10px; padding:12px 30px; background:#007bff; color:#fff; text-decoration:none; border-radius:5px; font-size:16px;">Tạo User Mới</a>
+                <a href="/get-crud" style="display:inline-block; margin:10px; padding:12px 30px; background:#28a745; color:#fff; text-decoration:none; border-radius:5px; font-size:16px;">Danh Sách Users</a>
+            </div>
+        `);
     });
     //cách 2: gọi hàm trong controller
     router.get('/home', homeController.getHomePage); //url cho trang chủ
