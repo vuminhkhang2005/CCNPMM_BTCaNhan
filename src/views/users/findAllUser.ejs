@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Danh sách người dùng - MongoDB</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.0/dist/css/bootstrap.min.css">
+</head>
+<body class="container mt-5">
+    <h2 class="mb-4">Danh sách người dùng (MongoDB)</h2>
+    <table class="table table-bordered table-hover">
+        <thead class="thead-dark">
+            <tr>
+                <th>Email</th>
+                <th>First Name</th>
+                <th>Last Name</th>
+                <th>Address</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            <% for(let i=0; i < datalist.length; i++) { %>
+                <tr>
+                    <td><%= datalist[i].email %></td>
+                    <td><%= datalist[i].firstName %></td>
+                    <td><%= datalist[i].lastName %></td>
+                    <td><%= datalist[i].address %></td>
+                    <td>
+                        <!-- Dùng _id cho MongoDB -->
+                        <a href="/edit-crud?id=<%= datalist[i]._id %>" class="btn btn-warning btn-sm">Edit</a>
+                        <a href="/delete-crud?id=<%= datalist[i]._id %>" class="btn btn-danger btn-sm">Delete</a>
+                    </td>
+                </tr>
+            <% } %>
+        </tbody>
+    </table>
+</body>
+</html>
