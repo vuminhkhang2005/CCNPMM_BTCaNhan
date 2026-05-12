@@ -12,7 +12,6 @@ const ResetPasswordPage = () => {
 
     useEffect(() => {
         const savedEmail = localStorage.getItem("reset_email");
-        const savedToken = localStorage.getItem("reset_token");
         
         if (!savedEmail) {
             notification.warning({
@@ -22,10 +21,6 @@ const ResetPasswordPage = () => {
             navigate("/forgot-password");
         } else {
             setEmail(savedEmail);
-            // Auto-fill the reset token if available
-            if (savedToken) {
-                form.setFieldsValue({ resetToken: savedToken });
-            }
         }
     }, [navigate, form]);
 
@@ -101,7 +96,7 @@ const ResetPasswordPage = () => {
                         layout='vertical'
                     >
                         <Form.Item
-                            label="Mã Reset (kiểm tra email hoặc console)"
+                            label="Mã Reset (kiểm tra email)"
                             name="resetToken"
                             rules={[
                                 {

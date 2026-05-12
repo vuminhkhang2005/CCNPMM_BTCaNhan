@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import { Button, Col, Divider, Form, Input, notification, Row, Spin, Alert } from 'antd';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeftOutlined, CopyOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined } from '@ant-design/icons';
 import axios from '../util/axios.customize';
 
 const ForgotPasswordPage = () => {
     const navigate = useNavigate();
     const [loading, setLoading] = useState(false);
-    const [resetToken, setResetToken] = useState("");
+    const [emailSent, setEmailSent] = useState(false);
 
     const onFinish = async (values) => {
         const { email } = values;
@@ -17,21 +17,20 @@ const ForgotPasswordPage = () => {
             const res = await axios.post('/v1/api/forgot-password', { email });
 
             if (res && res.EC === 0) {
-                setResetToken(res.resetToken);
+                setEmailSent(true);
                 
                 notification.success({
                     message: "QUÊN MẬT KHẨU",
-                    description: `Mã reset: ${res.resetToken}`,
+                    description: "Mã đặt lại mật khẩu đã được gửi đến email của bạn. Vui lòng kiểm tra hộp thư.",
                     duration: 0
                 });
 
-                // Lưu email và token vào localStorage để dùng trên trang reset password
+                // Lưu email vào localStorage để dùng trên trang reset password
                 localStorage.setItem("reset_email", email);
-                localStorage.setItem("reset_token", res.resetToken);
 
                 setTimeout(() => {
                     navigate("/reset-password");
-                }, 2000);
+                }, 3000);
             } else {
                 notification.error({
                     message: "QUÊN MẬT KHẨU",
@@ -48,16 +47,6 @@ const ForgotPasswordPage = () => {
         }
     };
 
-    const copyToken = () => {
-        if (resetToken) {
-            navigator.clipboard.writeText(resetToken);
-            notification.success({
-                message: "Sao chép thành công",
-                description: "Mã reset đã được sao chép vào clipboard"
-            });
-        }
-    };
-
     return (
         <Row justify={"center"} style={{ marginTop: "30px" }}>
             <Col xs={24} md={16} lg={8}>
@@ -69,32 +58,10 @@ const ForgotPasswordPage = () => {
                 }}>
                     <legend>Quên Mật Khẩu</legend>
                     
-                    {resetToken && (
+                    {emailSent && (
                         <Alert
-                            message="Mã Reset Của Bạn"
-                            description={
-                                <div style={{ marginTop: "10px" }}>
-                                    <div style={{
-                                        backgroundColor: "#f5f5f5",
-                                        padding: "10px",
-                                        borderRadius: "4px",
-                                        fontSize: "16px",
-                                        fontWeight: "bold",
-                                        color: "#1890ff",
-                                        wordBreak: "break-all"
-                                    }}>
-                                        {resetToken}
-                                    </div>
-                                    <Button 
-                                        type="text" 
-                                        icon={<CopyOutlined />}
-                                        onClick={copyToken}
-                                        style={{ marginTop: "10px" }}
-                                    >
-                                        Sao chép mã
-                                    </Button>
-                                </div>
-                            }
+                            message="Email đã được gửi"
+                            description="Vui lòng kiểm tra hộp thư của bạn để nhận mã đặt lại mật khẩu."
                             type="success"
                             closable
                             style={{ marginBottom: "20px" }}
@@ -131,7 +98,7 @@ const ForgotPasswordPage = () => {
                         </Form.Item>
                     </Form>
 
-                    {resetToken && (
+                    {emailSent && (
                         <div style={{ 
                             backgroundColor: "#e6f7ff", 
                             padding: "10px", 
@@ -141,9 +108,9 @@ const ForgotPasswordPage = () => {
                         }}>
                             <strong>Hướng dẫn:</strong>
                             <ul style={{ marginBottom: 0, marginTop: "5px" }}>
-                                <li>Sao chép mã reset ở trên</li>
+                                <li>Kiểm tra email để nhận mã reset</li>
                                 <li>Đi đến trang "Đặt lại mật khẩu"</li>
-                                <li>Dán mã và nhập mật khẩu mới</li>
+                                <li>Nhập mã và mật khẩu mới</li>
                             </ul>
                         </div>
                     )}

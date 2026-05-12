@@ -3,7 +3,57 @@ const User = require("../models/user");
 const bcrypt = require('bcrypt');
 const jwt = require("jsonwebtoken");
 const crypto = require('crypto');
+const nodemailer = require('nodemailer');
 const saltRounds = 10;
+
+// Biến lưu transporter (tạo 1 lần)
+let transporter = null;
+
+// Khởi tạo Email transporter
+const initTransporter = async () => {
+    if (transporter) return transporter;
+
+    try {
+        transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: {
+                user: 'vmkhang2072005@gmail.com',
+                pass: 'vkyj upbb wkoz gyui'
+            }
+        });
+
+        return transporter;
+    } catch (error) {
+        console.error('Error creating transporter:', error);
+        return null;
+    }
+};
+
+// Hàm gửi email
+const sendEmail = async (to, subject, html) => {
+    try {
+        const transport = await initTransporter();
+        if (!transport) {
+            return { success: false, error: 'Email service unavailable' };
+        }
+
+        const mailOptions = {
+            from: '"FullStack App" <vmkhang2072005@gmail.com>',
+            to,
+            subject,
+            html,
+        };
+
+        const info = await transport.sendMail(mailOptions);
+        
+        console.log('\n📨 Email sent: ' + info.response);
+
+        return { success: true, messageId: info.messageId };
+    } catch (error) {
+        console.error('Error sending email:', error);
+        return { success: false, error: error.message };
+    }
+};
 
 const createUserService = async (name, email, password) => {
     try {
@@ -123,16 +173,43 @@ const forgotPasswordService = async (email) => {
         user.passwordResetExpires = resetTokenExpires;
         await user.save();
 
-        console.log("\n=== RESET PASSWORD TOKEN ===");
+        // Gửi email chứa mã reset
+        const subject = "Mã đặt lại mật khẩu - FullStack App";
+        const html = `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h2 style="color: #333;">Đặt lại mật khẩu</h2>
+                <p>Xin chào ${user.name},</p>
+                <p>Bạn đã yêu cầu đặt lại mật khẩu cho tài khoản của mình.</p>
+                <p>Mã đặt lại mật khẩu của bạn là:</p>
+                <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; text-align: center; margin: 20px 0;">
+                    <span style="font-size: 24px; font-weight: bold; color: #1890ff;">${resetToken}</span>
+                </div>
+                <p>Mã này sẽ hết hạn sau 15 phút.</p>
+                <p>Nếu bạn không yêu cầu đặt lại mật khẩu, vui lòng bỏ qua email này.</p>
+                <br>
+                <p>Trân trọng,<br>Đội ngũ FullStack App</p>
+            </div>
+        `;
+
+        const emailResult = await sendEmail(email, subject, html);
+
+        if (!emailResult.success) {
+            console.error('Failed to send email:', emailResult.error);
+            return {
+                EC: -1,
+                EM: "Không thể gửi email, vui lòng thử lại sau"
+            };
+        }
+
+        console.log("\n=== RESET PASSWORD TOKEN SENT ===");
         console.log(`Email: ${email}`);
         console.log(`Reset Token: ${resetToken}`);
         console.log(`Expires in: 15 minutes`);
-        console.log("=============================\n");
+        console.log("=================================\n");
 
         return {
             EC: 0,
-            EM: `Mã reset: ${resetToken} (Hết hạn sau 15 phút)`,
-            resetToken: resetToken
+            EM: "Mã đặt lại mật khẩu đã được gửi đến email của bạn. Vui lòng kiểm tra hộp thư."
         };
     } catch (error) {
         console.log(">>> Error tại forgotPasswordService: ", error);
