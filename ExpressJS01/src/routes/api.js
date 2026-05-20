@@ -7,7 +7,13 @@ const {
     forgotPassword,
     resetPassword,
 } = require("../controllers/userController");
-const { getProducts, getProductCategories, getProductDetail } = require("../controllers/productController");
+const {
+    getProducts,
+    getProductsByCategory,
+    getProductRanking,
+    getProductCategories,
+    getProductDetail,
+} = require("../controllers/productController");
 const auth = require("../middleware/auth");
 
 const routerAPI = express.Router();
@@ -23,6 +29,8 @@ routerAPI.get("/", (req, res) => res.status(200).json("Hello world api"));
 routerAPI.get("/user", getUser);
 routerAPI.get("/account", getAccount);
 routerAPI.get("/products", getProducts);
+routerAPI.get("/products/by-category", getProductsByCategory);
+routerAPI.get("/products/ranking", getProductRanking);
 routerAPI.get("/products/:slug", getProductDetail);
 routerAPI.get("/categories", getProductCategories);
 
