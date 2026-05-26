@@ -1,9 +1,9 @@
-import { useContext, useEffect, useMemo, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { notification, Spin } from "antd";
-import { FireOutlined, FilterOutlined, LogoutOutlined, ReloadOutlined, SearchOutlined, ShoppingCartOutlined, StarFilled, ThunderboltOutlined } from "@ant-design/icons";
+import { EyeOutlined, FilterOutlined, LeftOutlined, LogoutOutlined, ReloadOutlined, RightOutlined, SearchOutlined, ShoppingCartOutlined, StarFilled } from "@ant-design/icons";
 import { AuthContext } from "../components/context/auth";
-import { getProductsApi } from "../util/api";
+import { getProductRankingApi, getProductsApi, getProductsByCategoryApi } from "../util/api";
 
 const initialFilters = {
   keyword: "",
@@ -77,6 +77,83 @@ const ProductLane = ({ title, icon, products }) => {
   );
 };
 
+const RankingLane = ({ type, title, icon }) => {
+  const [page, setPage] = useState(1);
+  const [products, setProducts] = useState([]);
+  const [pagination, setPagination] = useState({ page: 1, totalPages: 1, total: 0 });
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const fetchRanking = async () => {
+      setLoading(true);
+      try {
+        const res = await getProductRankingApi({ type, page, limit: 4 });
+        if (res?.EC === 0) {
+          setProducts(res.products);
+          setPagination(res.pagination);
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchRanking();
+  }, [page, type]);
+
+  return (
+    <section className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="inline-flex items-center gap-2 text-2xl font-black text-stone-950">{icon}{title}</h2>
+          <p className="mt-1 text-sm font-semibold text-stone-500">Top 10 products, page {pagination.page} of {pagination.totalPages}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setPage((value) => Math.max(1, value - 1))}
+            disabled={page <= 1 || loading}
+            className="grid h-10 w-10 place-items-center rounded-md border border-stone-300 bg-white text-stone-700 hover:border-emerald-600 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <LeftOutlined />
+          </button>
+          <button
+            type="button"
+            onClick={() => setPage((value) => Math.min(pagination.totalPages, value + 1))}
+            disabled={page >= pagination.totalPages || loading}
+            className="grid h-10 w-10 place-items-center rounded-md border border-stone-300 bg-white text-stone-700 hover:border-emerald-600 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <RightOutlined />
+          </button>
+        </div>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {loading ? (
+          <div className="col-span-full grid min-h-48 place-items-center rounded-md border border-stone-200 bg-white"><Spin /></div>
+        ) : products.map((product) => <ProductCard key={product.id} product={product} />)}
+      </div>
+    </section>
+  );
+};
+
+const mergeCategoryGroups = (currentGroups, nextGroups) => {
+  const merged = new Map(currentGroups.map((group) => [group.id, { ...group, products: [...group.products] }]));
+
+  nextGroups.forEach((group) => {
+    const currentGroup = merged.get(group.id);
+    if (!currentGroup) {
+      merged.set(group.id, { ...group, products: [...group.products] });
+      return;
+    }
+
+    const currentIds = new Set(currentGroup.products.map((product) => product.id));
+    currentGroup.products.push(...group.products.filter((product) => !currentIds.has(product.id)));
+  });
+
+  return Array.from(merged.values());
+};
+
+const countLoadedProducts = (groups) => groups.reduce((total, group) => total + group.products.length, 0);
+
 const HomePage = () => {
   const navigate = useNavigate();
   const { auth, setAuth } = useContext(AuthContext);
@@ -84,6 +161,10 @@ const HomePage = () => {
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [categoryGroups, setCategoryGroups] = useState([]);
+  const [categoryPagination, setCategoryPagination] = useState({ page: 1, totalPages: 1, total: 0, hasMore: false });
+  const [categoryLoading, setCategoryLoading] = useState(false);
+  const loadMoreRef = useRef(null);
 
   const handleLogout = () => {
     localStorage.removeItem("access_token");
@@ -96,7 +177,7 @@ const HomePage = () => {
     const timer = setTimeout(async () => {
       setLoading(true);
       try {
-        const res = await getProductsApi(cleanParams(filters));
+        const res = await getProductsApi({ ...cleanParams(filters), page: 1, limit: 100 });
         if (res?.EC === 0) {
           setProducts(res.products);
           setCategories(res.categories);
@@ -110,6 +191,58 @@ const HomePage = () => {
     return () => clearTimeout(timer);
   }, [auth.isAuthenticated, filters]);
 
+  useEffect(() => {
+    if (!auth.isAuthenticated) return;
+
+    const fetchFirstCategoryPage = async () => {
+      setCategoryLoading(true);
+      try {
+        const res = await getProductsByCategoryApi({ ...cleanParams(filters), page: 1, limit: 4 });
+        if (res?.EC === 0) {
+          setCategoryGroups(res.categories);
+          setCategoryPagination(res.pagination);
+        }
+      } finally {
+        setCategoryLoading(false);
+      }
+    };
+
+    fetchFirstCategoryPage();
+  }, [auth.isAuthenticated, filters]);
+
+  const loadNextCategoryPage = useCallback(async () => {
+    if (categoryLoading || !categoryPagination.hasMore) return;
+
+    setCategoryLoading(true);
+    try {
+      const nextPage = categoryPagination.page + 1;
+      const res = await getProductsByCategoryApi({ ...cleanParams(filters), page: nextPage, limit: 4 });
+      if (res?.EC === 0) {
+        setCategoryGroups((currentGroups) => mergeCategoryGroups(currentGroups, res.categories));
+        setCategoryPagination(res.pagination);
+      }
+    } finally {
+      setCategoryLoading(false);
+    }
+  }, [categoryLoading, categoryPagination.hasMore, categoryPagination.page, filters]);
+
+  useEffect(() => {
+    if (!auth.isAuthenticated || !loadMoreRef.current) return undefined;
+
+    const observer = new IntersectionObserver((entries) => {
+      const shouldLoadMore = entries.some((entry) => entry.isIntersecting)
+        && categoryPagination.hasMore
+        && !categoryLoading;
+
+      if (!shouldLoadMore) return;
+
+      loadNextCategoryPage();
+    }, { rootMargin: "360px" });
+
+    observer.observe(loadMoreRef.current);
+    return () => observer.disconnect();
+  }, [auth.isAuthenticated, categoryLoading, categoryPagination.hasMore, loadNextCategoryPage]);
+
   const stats = useMemo(() => ({
     totalSold: products.reduce((sum, product) => sum + product.sold, 0),
     totalStock: products.reduce((sum, product) => sum + product.stock, 0),
@@ -118,8 +251,8 @@ const HomePage = () => {
 
   const promoProducts = useMemo(() => products.filter((product) => product.discount > 0).slice(0, 3), [products]);
   const newestProducts = useMemo(() => products.filter((product) => product.isNew).slice(0, 3), [products]);
-  const bestSellerProducts = useMemo(() => products.filter((product) => product.bestSeller).slice(0, 3), [products]);
   const updateFilter = (name, value) => setFilters((prev) => ({ ...prev, [name]: value }));
+  const loadedCategoryProductCount = countLoadedProducts(categoryGroups);
 
   if (!auth.isAuthenticated) {
     return (
@@ -201,16 +334,64 @@ const HomePage = () => {
 
       {loading ? <div className="grid min-h-80 place-items-center"><Spin /></div> : (
         <>
-          <ProductLane title="Deals" icon={<ThunderboltOutlined className="text-rose-600" />} products={promoProducts} />
-          <ProductLane title="New arrivals" icon={<FireOutlined className="text-sky-600" />} products={newestProducts} />
-          <ProductLane title="Best sellers" icon={<StarFilled className="text-amber-500" />} products={bestSellerProducts} />
+          <ProductLane title="Deals" icon={<StarFilled className="text-rose-600" />} products={promoProducts} />
+          <ProductLane title="New arrivals" icon={<ShoppingCartOutlined className="text-sky-600" />} products={newestProducts} />
+          <RankingLane type="best-seller" title="Top 10 best sellers" icon={<StarFilled className="text-amber-500" />} />
+          <RankingLane type="most-viewed" title="Top 10 most viewed" icon={<EyeOutlined className="text-emerald-700" />} />
           <section className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-2xl font-black text-stone-950">All products</h2>
-              <p className="text-sm font-semibold text-stone-500">{products.length} results</p>
+              <div>
+                <h2 className="text-2xl font-black text-stone-950">All products by category</h2>
+                <p className="mt-1 text-sm font-semibold text-stone-500">
+                  Lazy loading is active: loaded {loadedCategoryProductCount} of {categoryPagination.total} products,
+                  page {categoryPagination.page} of {categoryPagination.totalPages}
+                </p>
+              </div>
             </div>
-            {products.length > 0 ? <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">{products.map((product) => <ProductCard key={product.id} product={product} />)}</div> : (
-              <div className="rounded-md border border-dashed border-stone-300 bg-white p-10 text-center"><p className="text-lg font-bold text-stone-900">No matching products</p><p className="mt-2 text-sm text-stone-500">Try another keyword or remove some filters.</p></div>
+            {categoryGroups.length > 0 ? (
+              <div className="space-y-8">
+                {categoryGroups.map((category) => (
+                  <div key={category.id}>
+                    <div className="mb-3 flex flex-wrap items-end justify-between gap-3 border-b border-stone-200 pb-2">
+                      <div>
+                        <h3 className="text-xl font-black text-stone-950">{category.name}</h3>
+                        <p className="text-sm text-stone-500">{category.description}</p>
+                      </div>
+                      <p className="text-sm font-bold text-emerald-700">{category.products.length} loaded</p>
+                    </div>
+                    <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+                      {category.products.map((product) => <ProductCard key={product.id} product={product} />)}
+                    </div>
+                  </div>
+                ))}
+                <div ref={loadMoreRef} className="grid min-h-24 place-items-center rounded-md border border-dashed border-emerald-300 bg-emerald-50/70 p-6 text-center text-sm font-bold text-emerald-800">
+                  {categoryLoading ? (
+                    <div className="flex items-center gap-3">
+                      <Spin />
+                      <span>Loading next page...</span>
+                    </div>
+                  ) : categoryPagination.hasMore ? (
+                    <button
+                      type="button"
+                      onClick={loadNextCategoryPage}
+                      className="rounded-md bg-emerald-700 px-5 py-3 text-sm font-black text-white hover:bg-emerald-800"
+                    >
+                      Load more products
+                    </button>
+                  ) : (
+                    <span>All products loaded</span>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-md border border-dashed border-stone-300 bg-white p-10 text-center">
+                {categoryLoading ? <Spin /> : (
+                  <>
+                    <p className="text-lg font-bold text-stone-900">No matching products</p>
+                    <p className="mt-2 text-sm text-stone-500">Try another keyword or remove some filters.</p>
+                  </>
+                )}
+              </div>
             )}
           </section>
         </>
