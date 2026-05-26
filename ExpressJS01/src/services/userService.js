@@ -1,278 +1,193 @@
 require("dotenv").config();
-const User = require("../models/user");
-const bcrypt = require('bcrypt');
-const jwt = require("jsonwebtoken");
-const crypto = require('crypto');
-const nodemailer = require('nodemailer');
-const saltRounds = 10;
 
-// Biến lưu transporter (tạo 1 lần)
+const bcrypt = require("bcrypt");
+const crypto = require("crypto");
+const jwt = require("jsonwebtoken");
+const nodemailer = require("nodemailer");
+const User = require("../models/user");
+
+const saltRounds = 10;
 let transporter = null;
 
-// Khởi tạo Email transporter
 const initTransporter = async () => {
     if (transporter) return transporter;
 
-    try {
-        transporter = nodemailer.createTransport({
-            service: 'gmail',
-            auth: {
-                user: 'vmkhang2072005@gmail.com',
-                pass: 'vkyj upbb wkoz gyui'
-            }
-        });
-
-        return transporter;
-    } catch (error) {
-        console.error('Error creating transporter:', error);
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
         return null;
     }
+
+    transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: {
+            user: process.env.EMAIL_USER,
+            pass: process.env.EMAIL_PASS,
+        },
+    });
+
+    return transporter;
 };
 
-// Hàm gửi email
 const sendEmail = async (to, subject, html) => {
     try {
         const transport = await initTransporter();
         if (!transport) {
-            return { success: false, error: 'Email service unavailable' };
+            return { success: false, error: "Email service unavailable" };
         }
 
-        const mailOptions = {
-            from: '"FullStack App" <vmkhang2072005@gmail.com>',
+        const info = await transport.sendMail({
+            from: `"FullStack App" <${process.env.EMAIL_USER}>`,
             to,
             subject,
             html,
-        };
-
-        const info = await transport.sendMail(mailOptions);
-        
-        console.log('\n📨 Email sent: ' + info.response);
+        });
 
         return { success: true, messageId: info.messageId };
     } catch (error) {
-        console.error('Error sending email:', error);
         return { success: false, error: error.message };
     }
 };
 
 const createUserService = async (name, email, password) => {
     try {
-        // 1. Kiểm tra xem user đã tồn tại chưa
         const user = await User.findOne({ email });
         if (user) {
-            console.log(`>>> User đã tồn tại, vui lòng chọn email khác: ${email}`);
             return {
                 EC: 1,
-                EM: "Email này đã được đăng ký, vui lòng chọn email khác"
+                EM: "This email is already registered. Please choose another email.",
             };
         }
 
-        // 2. Hash mật khẩu của người dùng
         const hashPassword = await bcrypt.hash(password, saltRounds);
-
-        // 3. Lưu người dùng vào database
-        let result = await User.create({
-            name: name,
-            email: email,
+        const result = await User.create({
+            name,
+            email,
             password: hashPassword,
-            role: "USER" // Mặc định gán role là USER
-        })
+            role: "USER",
+        });
+
         return {
             EC: 0,
-            EM: "Tạo tài khoản thành công",
-            user: result
+            EM: "Account created successfully",
+            user: result,
         };
-
     } catch (error) {
-        console.log(">>> Error tại createUserService: ", error);
+        console.log(">>> Error at createUserService: ", error);
         return {
             EC: -1,
-            EM: "Lỗi hệ thống, vui lòng thử lại"
+            EM: "System error. Please try again.",
         };
     }
-}
+};
 
 const loginService = async (email, password) => {
     try {
-        // 1. Tìm người dùng theo email
-        const user = await User.findOne({ email: email });
-
-        if (user) {
-            // 2. So sánh mật khẩu (mật khẩu nhập vào vs mật khẩu đã hash trong DB)
-            const isMatchPassword = await bcrypt.compare(password, user.password);
-
-            if (!isMatchPassword) {
-                return {
-                    EC: 2,
-                    EM: "Email hoặc Mật khẩu không chính xác"
-                };
-            } else {
-                // 3. Tạo Access Token (JWT)
-                const payload = {
-                    email: user.email,
-                    name: user.name
-                };
-
-                const access_token = jwt.sign(
-                    payload,
-                    process.env.JWT_SECRET,
-                    {
-                        expiresIn: process.env.JWT_EXPIRE
-                    }
-                );
-
-                return {
-                    EC: 0,
-                    access_token,
-                    user: {
-                        email: user.email,
-                        name: user.name
-                    }
-                };
-            }
-        } else {
-            return {
-                EC: 1,
-                EM: "Email hoặc Mật khẩu không chính xác"
-            };
+        const user = await User.findOne({ email });
+        if (!user) {
+            return { EC: 1, EM: "Email or password is incorrect" };
         }
 
+        const isMatchPassword = await bcrypt.compare(password, user.password);
+        if (!isMatchPassword) {
+            return { EC: 2, EM: "Email or password is incorrect" };
+        }
+
+        const payload = {
+            email: user.email,
+            name: user.name,
+            role: user.role,
+        };
+
+        const access_token = jwt.sign(payload, process.env.JWT_SECRET, {
+            expiresIn: process.env.JWT_EXPIRE || "1d",
+        });
+
+        return {
+            EC: 0,
+            access_token,
+            user: payload,
+        };
     } catch (error) {
-        console.log(">>> Error tại loginService: ", error);
-        return null;
+        console.log(">>> Error at loginService: ", error);
+        return {
+            EC: -1,
+            EM: "System error",
+        };
     }
-}
+};
 
 const getUserService = async () => {
     try {
-        let result = await User.find({}).select("-password"); // Lấy tất cả user nhưng ẩn mật khẩu
-        return result;
+        return await User.find({}).select("-password");
     } catch (error) {
-        console.log(">>> Error tại getUserService: ", error);
-        return null;
+        console.log(">>> Error at getUserService: ", error);
+        return [];
     }
-}
+};
 
 const forgotPasswordService = async (email) => {
     try {
         const user = await User.findOne({ email });
-
         if (!user) {
-            return {
-                EC: 1,
-                EM: "Email không tồn tại trong hệ thống"
-            };
+            return { EC: 1, EM: "Email does not exist in the system" };
         }
 
-        // Tạo token reset (6 ký tự ngẫu nhiên)
-        const resetToken = crypto.randomBytes(3).toString('hex').toUpperCase();
-        const resetTokenExpires = new Date(Date.now() + 15 * 60 * 1000); // Hết hạn sau 15 phút
-
-        // Lưu token vào database
+        const resetToken = crypto.randomBytes(3).toString("hex").toUpperCase();
         user.passwordResetToken = resetToken;
-        user.passwordResetExpires = resetTokenExpires;
+        user.passwordResetExpires = new Date(Date.now() + 15 * 60 * 1000);
         await user.save();
 
-        // Gửi email chứa mã reset
-        const subject = "Mã đặt lại mật khẩu - FullStack App";
         const html = `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                <h2 style="color: #333;">Đặt lại mật khẩu</h2>
-                <p>Xin chào ${user.name},</p>
-                <p>Bạn đã yêu cầu đặt lại mật khẩu cho tài khoản của mình.</p>
-                <p>Mã đặt lại mật khẩu của bạn là:</p>
+                <h2 style="color: #333;">Reset your password</h2>
+                <p>Hello ${user.name},</p>
+                <p>Your password reset code is:</p>
                 <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; text-align: center; margin: 20px 0;">
                     <span style="font-size: 24px; font-weight: bold; color: #1890ff;">${resetToken}</span>
                 </div>
-                <p>Mã này sẽ hết hạn sau 15 phút.</p>
-                <p>Nếu bạn không yêu cầu đặt lại mật khẩu, vui lòng bỏ qua email này.</p>
-                <br>
-                <p>Trân trọng,<br>Đội ngũ FullStack App</p>
+                <p>This code will expire in 15 minutes.</p>
             </div>
         `;
 
-        const emailResult = await sendEmail(email, subject, html);
-
+        const emailResult = await sendEmail(email, "Password reset code - FullStack App", html);
         if (!emailResult.success) {
-            console.error('Failed to send email:', emailResult.error);
-            return {
-                EC: -1,
-                EM: "Không thể gửi email, vui lòng thử lại sau"
-            };
+            return { EC: -1, EM: "Could not send email. Please try again later." };
         }
-
-        console.log("\n=== RESET PASSWORD TOKEN SENT ===");
-        console.log(`Email: ${email}`);
-        console.log(`Reset Token: ${resetToken}`);
-        console.log(`Expires in: 15 minutes`);
-        console.log("=================================\n");
 
         return {
             EC: 0,
-            EM: "Mã đặt lại mật khẩu đã được gửi đến email của bạn. Vui lòng kiểm tra hộp thư."
+            EM: "The password reset code has been sent to your email. Please check your inbox.",
         };
     } catch (error) {
-        console.log(">>> Error tại forgotPasswordService: ", error);
-        return {
-            EC: -1,
-            EM: "Lỗi hệ thống"
-        };
+        console.log(">>> Error at forgotPasswordService: ", error);
+        return { EC: -1, EM: "System error" };
     }
-}
+};
 
 const resetPasswordService = async (email, resetToken, newPassword) => {
     try {
         const user = await User.findOne({ email });
-
-        if (!user) {
-            return {
-                EC: 1,
-                EM: "Email không tồn tại"
-            };
-        }
-
-        // Kiểm tra token
-        if (user.passwordResetToken !== resetToken) {
-            return {
-                EC: 2,
-                EM: "Mã reset không chính xác"
-            };
-        }
-
-        // Kiểm tra token hết hạn
+        if (!user) return { EC: 1, EM: "Email does not exist" };
+        if (user.passwordResetToken !== resetToken) return { EC: 2, EM: "Reset code is incorrect" };
         if (new Date() > user.passwordResetExpires) {
-            return {
-                EC: 3,
-                EM: "Mã reset đã hết hạn, vui lòng yêu cầu mã mới"
-            };
+            return { EC: 3, EM: "Reset code has expired. Please request a new code." };
         }
 
-        // Hash mật khẩu mới
-        const hashPassword = await bcrypt.hash(newPassword, saltRounds);
-
-        // Cập nhật mật khẩu và xoá token
-        user.password = hashPassword;
+        user.password = await bcrypt.hash(newPassword, saltRounds);
         user.passwordResetToken = undefined;
         user.passwordResetExpires = undefined;
         await user.save();
 
-        return {
-            EC: 0,
-            EM: "Đặt lại mật khẩu thành công. Vui lòng đăng nhập lại"
-        };
+        return { EC: 0, EM: "Password reset successfully. Please login again." };
     } catch (error) {
-        console.log(">>> Error tại resetPasswordService: ", error);
-        return {
-            EC: -1,
-            EM: "Lỗi hệ thống"
-        };
+        console.log(">>> Error at resetPasswordService: ", error);
+        return { EC: -1, EM: "System error" };
     }
-}
+};
 
 module.exports = {
     createUserService,
     loginService,
     getUserService,
     forgotPasswordService,
-    resetPasswordService
+    resetPasswordService,
 };

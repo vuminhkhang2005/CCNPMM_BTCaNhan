@@ -1,30 +1,16 @@
-import { createContext, useState } from 'react';
+import { useState } from "react";
+import { AuthContext } from "./auth";
 
-export const AuthContext = createContext({
+export const AuthWrapper = ({ children }) => {
+  const [auth, setAuth] = useState({
     isAuthenticated: false,
-    user: {
-        email: "",
-        name: ""
-    },
-    appLoading: true,
-});
+    user: { email: "", name: "", role: "" },
+  });
+  const [appLoading, setAppLoading] = useState(true);
 
-export const AuthWrapper = (props) => {
-    const [auth, setAuth] = useState({
-        isAuthenticated: false,
-        user: {
-            email: "",
-            name: ""
-        }
-    });
-
-    const [appLoading, setAppLoading] = useState(true);
-
-    return (
-        <AuthContext.Provider value={{
-            auth, setAuth, appLoading, setAppLoading
-        }}>
-            {props.children}
-        </AuthContext.Provider>
-    );
-}
+  return (
+    <AuthContext.Provider value={{ auth, setAuth, appLoading, setAppLoading }}>
+      {children}
+    </AuthContext.Provider>
+  );
+};

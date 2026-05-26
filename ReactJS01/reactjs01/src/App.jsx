@@ -1,61 +1,52 @@
+import { useContext, useEffect } from "react";
 import { Outlet } from "react-router-dom";
-import Header from "./components/layout/header";
-import axios from "./util/axios.customize"
-import { useContext, useEffect } from "react"
-import { AuthContext } from "./components/context/auth.context";
 import { Spin } from "antd";
+import Header from "./components/layout/header";
+import { AuthContext } from "./components/context/auth";
+import { getAccountApi } from "./util/api";
 
 function App() {
-
   const { setAuth, appLoading, setAppLoading } = useContext(AuthContext);
 
   useEffect(() => {
     const fetchAccount = async () => {
       setAppLoading(true);
       try {
-        const res = await axios.get(`/v1/api/user`);
+        const res = await getAccountApi();
         if (res && !res.message) {
           setAuth({
             isAuthenticated: true,
             user: {
               email: res.email,
-              name: res.name
-            }
-          })
+              name: res.name,
+              role: res.role,
+            },
+          });
         }
-      } catch (error) {
-        console.error("Lỗi gọi API fetch account: ", error);
       } finally {
-        // Dù lỗi hay không cũng phải tắt loading
-        setAppLoading(false); 
+        setAppLoading(false);
       }
-    }
+    };
 
     fetchAccount();
-  }, [])
+  }, [setAppLoading, setAuth]);
+
+  if (appLoading) {
+    return (
+      <div className="fixed inset-0 grid place-items-center bg-stone-50">
+        <Spin />
+      </div>
+    );
+  }
 
   return (
-    <div>
-      {appLoading === true ?
-        <div style={{
-          position: "fixed",
-          top: "50%",
-          left: "50%",
-          transform: "translate(-50%, -50%)"
-        }}>
-
-          <Spin />
-
-        </div>
-        :
-        <>
-          <Header />
-          <Outlet />
-        </>
-      }
-
-    </div>
-  )
+    <>
+      <Header />
+      <main>
+        <Outlet />
+      </main>
+    </>
+  );
 }
 
-export default App
+export default App;

@@ -1,27 +1,15 @@
-require('dotenv').config();
-const mongoose = require('mongoose');
-
-const dbState = [{
-    value: 0,
-    label: "Disconnected"
-},
-{
-    value: 1,
-    label: "Connected"
-},
-{
-    value: 2,
-    label: "Connecting"
-},
-{
-    value: 3,
-    label: "Disconnecting"
-}];
+const mongoose = require("mongoose");
 
 const connection = async () => {
-    await mongoose.connect(process.env.MONGO_DB_URL);
-    const state = Number(mongoose.connection.readyState);
-    console.log(dbState.find(f => f.value === state).label, "to database"); // connected to db
-}
+    const uri = process.env.MONGO_DB_URL || process.env.MONGODB_URI || process.env.DB_HOST;
+
+    if (!uri) {
+        console.log("MongoDB connection string is missing. API will still serve static product data.");
+        return;
+    }
+
+    await mongoose.connect(uri);
+    console.log("Connected to database");
+};
 
 module.exports = connection;

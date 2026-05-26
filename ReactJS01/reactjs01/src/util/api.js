@@ -1,28 +1,17 @@
-import axios from './axios.customize';
+import axios from "./axios.customize";
 
-const createUserApi = (name, email, password) => {
-    const URL_API = "/v1/api/register";
-    const data = {
-        name, email, password
-    }
-
-    return axios.post(URL_API, data)
-}
-
-const loginApi = (email, password) => {
-    const URL_API = "/v1/api/login";
-    const data = {
-        email, password
-    }
-
-    return axios.post(URL_API, data)
-}
-
-const getUserApi = () => {
-    const URL_API = "/v1/api/user";
-    return axios.get(URL_API)
-}
+const createUserApi = (name, email, password) => axios.post("/v1/api/register", { name, email, password });
+const loginApi = (email, password) => axios.post("/v1/api/login", { email, password });
+const getUserApi = () => axios.get("/v1/api/user");
+const getAccountApi = () => axios.get("/v1/api/account");
+const getProductsApi = (params = {}) => axios.get("/v1/api/products", { params });
+const getProductDetailApi = (slug) => axios.get(`/v1/api/products/${slug}`);
 
 export {
-    createUserApi, loginApi, getUserApi
-}
+  createUserApi,
+  loginApi,
+  getUserApi,
+  getAccountApi,
+  getProductsApi,
+  getProductDetailApi,
+};
