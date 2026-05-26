@@ -8,6 +8,7 @@ import "swiper/css";
 import "swiper/css/navigation";
 import "swiper/css/pagination";
 import { AuthContext } from "../components/context/auth";
+import { CartContext } from "../components/context/cart.context";
 import { getProductDetailApi } from "../util/api";
 
 const formatCurrency = (value) => new Intl.NumberFormat("vi-VN", {
@@ -37,9 +38,12 @@ const SimilarProductCard = ({ product }) => (
 const ProductDetailPage = () => {
   const { slug } = useParams();
   const { auth } = useContext(AuthContext);
+  const { addToCart } = useContext(CartContext);
   const [product, setProduct] = useState(null);
   const [similarProducts, setSimilarProducts] = useState([]);
   const [quantity, setQuantity] = useState(1);
+  const [selectedColor, setSelectedColor] = useState("");
+  const [selectedSize, setSelectedSize] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -54,6 +58,8 @@ const ProductDetailPage = () => {
           setProduct(res.product);
           setSimilarProducts(res.similarProducts);
           setQuantity(res.product.stock > 0 ? 1 : 0);
+          setSelectedColor(res.product.colors?.[0] || "");
+          setSelectedSize(res.product.sizes?.[0] || "");
         } else {
           setError(res?.EM || "Product not found");
         }
@@ -71,9 +77,26 @@ const ProductDetailPage = () => {
     if (!product) return;
     setQuantity((value) => Math.min(product.stock, value + 1));
   };
-  const handleAddToCart = () => {
-    notification.success({ message: "Cart", description: `Selected ${quantity} x ${product.name}` });
+  const handleAddToCart = async () => {
+    if (!selectedColor || !selectedSize) {
+      notification.warning({
+        message: "Lựa chọn sản phẩm",
+        description: "Vui lòng chọn màu sắc và kích cỡ giày.",
+      });
+      return;
+    }
+    await addToCart({
+      productId: product.id,
+      slug: product.slug,
+      name: product.name,
+      price: product.price,
+      color: selectedColor,
+      size: Number(selectedSize),
+      quantity: Number(quantity),
+      image: product.images[0],
+    });
   };
+
 
   if (!auth.isAuthenticated) {
     return (
@@ -146,11 +169,41 @@ const ProductDetailPage = () => {
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <p className="mb-2 text-sm font-bold text-stone-900">Colors</p>
-              <div className="flex flex-wrap gap-2">{product.colors.map((color) => <span key={color} className="rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-semibold text-stone-700">{color}</span>)}</div>
+              <div className="flex flex-wrap gap-2">
+                {product.colors.map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    onClick={() => setSelectedColor(color)}
+                    className={`rounded-md border px-3 py-2 text-sm font-semibold transition cursor-pointer ${
+                      selectedColor === color
+                        ? "border-emerald-700 bg-emerald-50 text-emerald-800 ring-2 ring-emerald-700/20"
+                        : "border-stone-300 bg-white text-stone-700 hover:border-stone-400"
+                    }`}
+                  >
+                    {color}
+                  </button>
+                ))}
+              </div>
             </div>
             <div>
               <p className="mb-2 text-sm font-bold text-stone-900">Size</p>
-              <div className="flex flex-wrap gap-2">{product.sizes.map((size) => <span key={size} className="rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-semibold text-stone-700">{size}</span>)}</div>
+              <div className="flex flex-wrap gap-2">
+                {product.sizes.map((size) => (
+                  <button
+                    key={size}
+                    type="button"
+                    onClick={() => setSelectedSize(size)}
+                    className={`rounded-md border px-3 py-2 text-sm font-semibold transition cursor-pointer ${
+                      Number(selectedSize) === Number(size)
+                        ? "border-emerald-700 bg-emerald-50 text-emerald-800 ring-2 ring-emerald-700/20"
+                        : "border-stone-300 bg-white text-stone-700 hover:border-stone-400"
+                    }`}
+                  >
+                    {size}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 

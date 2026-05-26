@@ -9,6 +9,24 @@ const User = require("../models/user");
 const saltRounds = 10;
 let transporter = null;
 
+// Initialize mock user store for memory fallback
+if (!global.mockUsers) {
+    global.mockUsers = [
+        {
+            name: "Admin Manager",
+            email: "admin@rungear.com",
+            password: bcrypt.hashSync("adminpassword", saltRounds),
+            role: "ADMIN"
+        },
+        {
+            name: "Regular Member",
+            email: "user@rungear.com",
+            password: bcrypt.hashSync("userpassword", saltRounds),
+            role: "USER"
+        }
+    ];
+}
+
 const initTransporter = async () => {
     if (transporter) return transporter;
 
@@ -49,6 +67,31 @@ const sendEmail = async (to, subject, html) => {
 
 const createUserService = async (name, email, password) => {
     try {
+        if (!global.dbConnected) {
+            // Memory fallback
+            const user = global.mockUsers.find((u) => u.email === email);
+            if (user) {
+                return {
+                    EC: 1,
+                    EM: "This email is already registered. Please choose another email. (Memory Fallback)",
+                };
+            }
+            const hashPassword = await bcrypt.hash(password, saltRounds);
+            const newUser = {
+                name,
+                email,
+                password: hashPassword,
+                role: "USER"
+            };
+            global.mockUsers.push(newUser);
+            return {
+                EC: 0,
+                EM: "Account created successfully (Memory Fallback)",
+                user: { name, email, role: "USER" }
+            };
+        }
+
+        // DB implementation
         const user = await User.findOne({ email });
         if (user) {
             return {
@@ -81,6 +124,32 @@ const createUserService = async (name, email, password) => {
 
 const loginService = async (email, password) => {
     try {
+        if (!global.dbConnected) {
+            // Memory fallback
+            const user = global.mockUsers.find((u) => u.email === email);
+            if (!user) {
+                return { EC: 1, EM: "Email or password is incorrect (Memory Fallback)" };
+            }
+            const isMatchPassword = await bcrypt.compare(password, user.password);
+            if (!isMatchPassword) {
+                return { EC: 2, EM: "Email or password is incorrect (Memory Fallback)" };
+            }
+            const payload = {
+                email: user.email,
+                name: user.name,
+                role: user.role,
+            };
+            const access_token = jwt.sign(payload, process.env.JWT_SECRET, {
+                expiresIn: process.env.JWT_EXPIRE || "2h",
+            });
+            return {
+                EC: 0,
+                access_token,
+                user: payload,
+            };
+        }
+
+        // DB implementation
         const user = await User.findOne({ email });
         if (!user) {
             return { EC: 1, EM: "Email or password is incorrect" };
@@ -98,7 +167,7 @@ const loginService = async (email, password) => {
         };
 
         const access_token = jwt.sign(payload, process.env.JWT_SECRET, {
-            expiresIn: process.env.JWT_EXPIRE || "1d",
+            expiresIn: process.env.JWT_EXPIRE || "2h",
         });
 
         return {
@@ -117,6 +186,10 @@ const loginService = async (email, password) => {
 
 const getUserService = async () => {
     try {
+        if (!global.dbConnected) {
+            // Memory fallback
+            return global.mockUsers.map((u) => ({ name: u.name, email: u.email, role: u.role }));
+        }
         return await User.find({}).select("-password");
     } catch (error) {
         console.log(">>> Error at getUserService: ", error);
@@ -126,6 +199,24 @@ const getUserService = async () => {
 
 const forgotPasswordService = async (email) => {
     try {
+        if (!global.dbConnected) {
+            const user = global.mockUsers.find((u) => u.email === email);
+            if (!user) {
+                return { EC: 1, EM: "Email does not exist in the system (Memory Fallback)" };
+            }
+            const resetToken = crypto.randomBytes(3).toString("hex").toUpperCase();
+            user.passwordResetToken = resetToken;
+            user.passwordResetExpires = new Date(Date.now() + 15 * 60 * 1000);
+            
+            console.log(`[MOCK EMAIL RESET CODE]: User ${user.email} -> Reset Code: ${resetToken}`);
+            
+            return {
+                EC: 0,
+                EM: `(Mock Mode) Mã khôi phục mật khẩu đã in ra log server: ${resetToken}`,
+            };
+        }
+
+        // DB implementation
         const user = await User.findOne({ email });
         if (!user) {
             return { EC: 1, EM: "Email does not exist in the system" };
@@ -165,6 +256,20 @@ const forgotPasswordService = async (email) => {
 
 const resetPasswordService = async (email, resetToken, newPassword) => {
     try {
+        if (!global.dbConnected) {
+            const user = global.mockUsers.find((u) => u.email === email);
+            if (!user) return { EC: 1, EM: "Email does not exist (Memory Fallback)" };
+            if (user.passwordResetToken !== resetToken) return { EC: 2, EM: "Reset code is incorrect (Memory Fallback)" };
+            if (new Date() > user.passwordResetExpires) {
+                return { EC: 3, EM: "Reset code has expired. (Memory Fallback)" };
+            }
+            user.password = await bcrypt.hash(newPassword, saltRounds);
+            user.passwordResetToken = undefined;
+            user.passwordResetExpires = undefined;
+            return { EC: 0, EM: "Password reset successfully. Please login again. (Memory Fallback)" };
+        }
+
+        // DB implementation
         const user = await User.findOne({ email });
         if (!user) return { EC: 1, EM: "Email does not exist" };
         if (user.passwordResetToken !== resetToken) return { EC: 2, EM: "Reset code is incorrect" };

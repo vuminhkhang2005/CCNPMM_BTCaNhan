@@ -1,12 +1,15 @@
 import { useContext } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { HomeOutlined, LoginOutlined, LogoutOutlined, UserOutlined, UsergroupAddOutlined } from "@ant-design/icons";
+import { HomeOutlined, LoginOutlined, LogoutOutlined, UserOutlined, UsergroupAddOutlined, ShoppingCartOutlined, HistoryOutlined, DashboardOutlined } from "@ant-design/icons";
 import { AuthContext } from "../context/auth";
+import { CartContext } from "../context/cart.context";
+import { Badge } from "antd";
 
 const Header = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { auth, setAuth } = useContext(AuthContext);
+  const { cartCount } = useContext(CartContext);
 
   const handleLogout = () => {
     localStorage.removeItem("access_token");
@@ -32,13 +35,32 @@ const Header = () => {
             <HomeOutlined /> Home
           </Link>
           {auth.isAuthenticated && (
-            <Link to="/user" className={`inline-flex items-center gap-2 rounded-md px-3 py-2 ${isActive("/user") ? "bg-emerald-50 text-emerald-800" : "text-stone-600 hover:bg-stone-100"}`}>
-              <UsergroupAddOutlined /> Users
-            </Link>
+            <>
+              <Link to="/user" className={`inline-flex items-center gap-2 rounded-md px-3 py-2 ${isActive("/user") ? "bg-emerald-50 text-emerald-800" : "text-stone-600 hover:bg-stone-100"}`}>
+                <UsergroupAddOutlined /> Users
+              </Link>
+              <Link to="/orders" className={`inline-flex items-center gap-2 rounded-md px-3 py-2 ${isActive("/orders") ? "bg-emerald-50 text-emerald-800" : "text-stone-600 hover:bg-stone-100"}`}>
+                <HistoryOutlined /> Lịch sử
+              </Link>
+              {auth.user.role === "ADMIN" && (
+                <Link to="/admin/orders" className={`inline-flex items-center gap-2 rounded-md px-3 py-2 ${isActive("/admin/orders") ? "bg-emerald-50 text-emerald-800" : "text-stone-600 hover:bg-stone-100"}`}>
+                  <DashboardOutlined /> Quản lý đơn
+                </Link>
+              )}
+            </>
           )}
         </nav>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          {auth.isAuthenticated && (
+            <Link to="/cart" className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-stone-600 hover:bg-stone-100 ${isActive("/cart") ? "bg-emerald-50 text-emerald-800" : ""}`}>
+              <Badge count={cartCount} size="small" offset={[5, -5]} color="#047857">
+                <ShoppingCartOutlined className="text-lg" />
+              </Badge>
+              <span className="hidden sm:inline font-semibold">Giỏ hàng</span>
+            </Link>
+          )}
+
           {auth.isAuthenticated ? (
             <>
               <div className="hidden min-w-0 text-right sm:block">
@@ -64,3 +86,4 @@ const Header = () => {
 };
 
 export default Header;
+

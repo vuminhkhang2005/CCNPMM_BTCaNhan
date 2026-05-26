@@ -6,29 +6,54 @@ const {
     getProductDetailService,
 } = require("../services/productService");
 
-const getProducts = (req, res) => {
-    const data = getProductsService(req.query);
-    return res.status(200).json(data);
+const getProducts = async (req, res) => {
+    try {
+        const data = await getProductsService(req.query);
+        return res.status(200).json(data);
+    } catch (error) {
+        console.error(">>> Error at getProducts controller:", error);
+        return res.status(500).json({ EC: -1, EM: "Internal server error" });
+    }
 };
 
-const getProductCategories = (req, res) => {
-    const data = getProductCategoriesService();
-    return res.status(200).json(data);
+const getProductCategories = async (req, res) => {
+    try {
+        const data = await getProductCategoriesService();
+        return res.status(200).json(data);
+    } catch (error) {
+        console.error(">>> Error at getProductCategories controller:", error);
+        return res.status(500).json({ EC: -1, EM: "Internal server error" });
+    }
 };
 
-const getProductsByCategory = (req, res) => {
-    const data = getProductsByCategoryService(req.query);
-    return res.status(200).json(data);
+const getProductsByCategory = async (req, res) => {
+    try {
+        const data = await getProductsByCategoryService(req.query);
+        return res.status(200).json(data);
+    } catch (error) {
+        console.error(">>> Error at getProductsByCategory controller:", error);
+        return res.status(500).json({ EC: -1, EM: "Internal server error" });
+    }
 };
 
-const getProductRanking = (req, res) => {
-    const data = getProductRankingService(req.query);
-    return res.status(200).json(data);
+const getProductRanking = async (req, res) => {
+    try {
+        const data = await getProductRankingService(req.query);
+        return res.status(200).json(data);
+    } catch (error) {
+        console.error(">>> Error at getProductRanking controller:", error);
+        return res.status(500).json({ EC: -1, EM: "Internal server error" });
+    }
 };
 
-const getProductDetail = (req, res) => {
-    const data = getProductDetailService(req.params.slug);
-    return res.status(data.EC === 0 ? 200 : 404).json(data);
+const getProductDetail = async (req, res) => {
+    try {
+        const data = await getProductDetailService(req.params.slug);
+        return res.status(data.EC === 0 ? 200 : 404).json(data);
+    } catch (error) {
+        console.error(">>> Error at getProductDetail controller:", error);
+        return res.status(500).json({ EC: -1, EM: "Internal server error" });
+    }
 };
 
 module.exports = {
@@ -38,3 +63,4 @@ module.exports = {
     getProductCategories,
     getProductDetail,
 };
+
