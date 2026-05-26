@@ -1,31 +1,77 @@
-import express from "express"; //gọi Express
-import homeController from "../controller/homeController"; //gọi controller
+import express from "express";
+import homeController from "../controllers/homeController";
+import loginController from "../controllers/loginController";
+import { 
+    loginLimiter, 
+    loginValidator, 
+    refreshTokenLimiter,
+    authenticateToken, 
+    authorizeUser, 
+    authorizeAdmin 
+} from "../middleware/loginMiddleware";
 
-let router = express.Router(); //khởi tạo Route
+let router = express.Router();
 
 let initWebRoutes = (app) => {
-    //cách 1:
+    // ==========================================
+    // TRANG CHỦ & CRUD CƠ BẢN
+    // ==========================================
     router.get('/', (req, res) => {
-        return res.send(`
-            <div style="text-align:center; margin-top:80px; font-family:Arial,sans-serif;">
-                <h1>Vũ Minh Khang - MSSV: 23110238</h1>
-                <p>CRUD Express.js – Sequelize – MySQL</p>
-                <a href="/crud" style="display:inline-block; margin:10px; padding:12px 30px; background:#007bff; color:#fff; text-decoration:none; border-radius:5px; font-size:16px;">Tạo User Mới</a>
-                <a href="/get-crud" style="display:inline-block; margin:10px; padding:12px 30px; background:#28a745; color:#fff; text-decoration:none; border-radius:5px; font-size:16px;">Danh Sách Users</a>
-            </div>
-        `);
+        return res.send('Bùi Thanh Tùng');
     });
-    //cách 2: gọi hàm trong controller
-    router.get('/home', homeController.getHomePage); //url cho trang chủ
-    router.get('/about', homeController.getAboutPage); //url cho trang about
-    router.get('/crud', homeController.getCRUD); //url get crud
-    router.post('/post-crud', homeController.postCRUD); //url post crud
-    router.get('/get-crud', homeController.getFindAllCrud) //url lấy findAll
-    router.get('/edit-crud', homeController.getEditCRUD); //url get editcrud
-    router.post('/put-crud', homeController.putCRUD); //url put crud
-    router.get('/delete-crud', homeController.deleteCRUD); //url get delete crud
+    router.get('/home', homeController.getHomePage);
+    router.get('/about', homeController.getAboutPage);
+    router.get('/crud', homeController.getCRUD);
+    router.post('/post-crud', homeController.postCRUD);
+    router.get('/get-crud', homeController.getFindAllCrud);
+    router.get('/edit-crud', homeController.getEditCRUD);
+    router.post('/put-crud', homeController.putCRUD);
+    router.get('/delete-crud', homeController.deleteCRUD);
 
-    return app.use("/", router); //url mặc định
+    // ==========================================
+    // LOGIN UI (Vũ Minh Khang - 23110238)
+    // ==========================================
+    router.get('/login-page', (req, res) => {
+        return res.render('login.ejs');
+    });
+
+    router.get('/user/profile-page', (req, res) => {
+        return res.render('userProfile.ejs');
+    });
+
+    router.get('/admin/profile-page', (req, res) => {
+        return res.render('adminProfile.ejs');
+    });
+
+    // ==========================================
+    // LOGIN API (Vũ Minh Khang - 23110238)
+    // Bảo mật: Rate Limiting + Validation + JWT + Authorization
+    // ==========================================
+    
+    // POST /api/login - Đăng nhập
+    // Áp dụng: loginLimiter (chống brute-force) + loginValidator (kiểm tra input)
+    router.post('/api/login', loginLimiter, loginValidator, loginController.handleLogin);
+
+    // POST /api/refresh-token - Cấp lại Access Token khi hết hạn
+    // Áp dụng: refreshTokenLimiter
+    router.post('/api/refresh-token', refreshTokenLimiter, loginController.handleRefreshToken);
+
+    // POST /api/logout - Đăng xuất (xóa refresh token)
+    router.post('/api/logout', loginController.handleLogout);
+
+    // ==========================================
+    // AUTHORIZATION - Phân quyền theo Role
+    // ==========================================
+    
+    // GET /user/profile - Trang profile cho User (R2) và Admin (R1)
+    // Áp dụng: authenticateToken (xác thực JWT) + authorizeUser (kiểm tra quyền)
+    router.get('/user/profile', authenticateToken, authorizeUser, loginController.getUserProfile);
+
+    // GET /admin/profile - Trang profile cho Admin (R1)
+    // Áp dụng: authenticateToken (xác thực JWT) + authorizeAdmin (chỉ Admin)
+    router.get('/admin/profile', authenticateToken, authorizeAdmin, loginController.getAdminProfile);
+
+    return app.use("/", router);
 }
 
-module.exports = initWebRoutes;
+export default initWebRoutes;

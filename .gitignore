@@ -1,8 +1,2 @@
 /node_modules
-/vendor
-/.idea
-.idea/
 .env
-package-lock.json
-pdf_content.txt
-pdf_images/

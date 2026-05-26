@@ -1,12 +1,13 @@
-import bcrypt from 'bcryptjs'; //import thư viện bcryptjs
-import db from '../models/index'; //import database
-const salt = bcrypt.genSaltSync(10); // thuật toán hash password
+import bcrypt from 'bcryptjs';
+import User from '../models/user';
 
-let createNewUser = async (data) => { //hàm tạo user với tham số data
-    return new Promise(async (resolve, reject) => { //dùng Promise đảm bảo luôn trả kết quả, trong xử lý bất đồng bộ
+const salt = bcrypt.genSaltSync(10);
+
+let createNewUser = async (data) => {
+    return new Promise(async (resolve, reject) => {
         try {
-            let hashPasswordFromBcrypt = await hashUserPassword(data.password)
-            await db.User.create({
+            let hashPasswordFromBcrypt = await hashUserPassword(data.password);
+            let newUser = new User({
                 email: data.email,
                 password: hashPasswordFromBcrypt,
                 firstName: data.firstName,
@@ -15,107 +16,84 @@ let createNewUser = async (data) => { //hàm tạo user với tham số data
                 phoneNumber: data.phoneNumber,
                 gender: data.gender === '1' ? true : false,
                 roleId: data.roleId
-            })
-            resolve('OK create a new user successfull');
-            // console.log('data from service');
-            //console.log(data) //log dữ liệu từ biến data
-            //console.log(hashPasswordFromBcrypt);
+            });
+
+            await newUser.save();
+            resolve('OK! Bùi Thanh Tùng đã tạo user mới vào MongoDB thành công');
         } catch (e) {
-            reject(e)
+            reject(e);
         }
-    })
+    });
 }
 
 let hashUserPassword = (password) => {
-    return new Promise(async (resolve, reject) => { //dùng Promise đảm bảo luôn trả kết quả, trong xử lý bất đồng bộ
+    return new Promise(async (resolve, reject) => {
         try {
-            let hashPassword = await bcrypt.hashSync("B4c0/\/", salt);
+            let hashPassword = await bcrypt.hashSync(password, salt);
             resolve(hashPassword);
         } catch (e) {
             reject(e);
         }
-
-    })
+    });
 }
-//lấy tất cả findAll CRUD
+
 let getAllUser = () => {
-    return new Promise(async (resolve, reject) => { //dùng Promise đảm bảo luôn trả kết quả, trong xử lý bất đồng bộ
+    return new Promise(async (resolve, reject) => {
         try {
-            let users = db.User.findAll({
-                raw: true, //hiển dữ liệu gốc
-            });
-            resolve(users); //hàm trả về kết quả
-        } catch (e) {
-            reject(e)
-        }
-    })
-}
-
-//lấy findOne CRUD
-let getUserInfoById = (userId) => {
-    return new Promise(async (resolve, reject) => { //dùng Promise đảm bảo luôn trả kết quả, trong xử lý bất đồng bộ
-        try {
-            let user = await db.User.findOne({
-                where: { id: userId }, //query điều kiện cho tham số
-                raw: true
-            });
-            if (user) {
-                resolve(user); //hàm trả về kết quả
-            } else {
-                resolve([]); //hàm trả về kết quả rỗng
-            }
-
-        } catch (e) {
-            reject(e)
-        }
-    })
-}
-
-//hàm put CRUD
-let updateUser = (data) => {
-    return new Promise(async (resolve, reject) => { //dùng Promise đảm bảo luôn trả kết quả, trong xử lý bất đồng bộ
-        try {
-            let user = await db.User.findOne({
-                where: { id: data.id } //query điều kiện cho tham số
-            });
-            if (user) {
-                user.firstName = data.firstName;
-                user.lastName = data.lastName;
-                user.address = data.address;
-                await user.save();
-                //lấy danh sách user
-                let allusers = await db.User.findAll();
-                resolve(allusers);
-            } else {
-                resolve(); //hàm trả về kết quả rỗng
-            }
-        } catch (e) {
-            reject(e)
-        }
-    })
-}
-
-//hàm xóa user
-let deleteUserById = (userId) => {
-    return new Promise(async (resolve, reject) => { //dùng Promise đảm bảo luôn trả kết quả, trong xử lý bất đồng bộ
-        try {
-            let user = await db.User.findOne({
-                where: { id: userId }
-            })
-            if (user) {
-                user.destroy();
-            }
-            resolve(); //là return
+            let users = await User.find().lean();
+            resolve(users);
         } catch (e) {
             reject(e);
         }
-    })
+    });
 }
 
-module.exports = { //xuất hàm ra bên ngoài
-    createNewUser: createNewUser,
-    getAllUser: getAllUser,
-    getUserInfoById: getUserInfoById,
-    updateUser: updateUser,
-    deleteUserById: deleteUserById
+let getUserInfoById = (userId) => {
+    return new Promise(async (resolve, reject) => {
+        try {
+            let user = await User.findById(userId).lean();
+            if (user) {
+                resolve(user);
+            } else {
+                resolve([]);
+            }
+        } catch (e) {
+            reject(e);
+        }
+    });
 }
+
+let updateUser = (data) => {
+    return new Promise(async (resolve, reject) => {
+        try {
+            await User.findByIdAndUpdate(data.id, {
+                firstName: data.firstName,
+                lastName: data.lastName,
+                address: data.address
+            });
+            let allUsers = await User.find().lean();
+            resolve(allUsers);
+        } catch (e) {
+            reject(e);
+        }
+    });
+}
+
+let deleteUserById = (userId) => {
+    return new Promise(async (resolve, reject) => {
+        try {
+            await User.findByIdAndDelete(userId);
+            resolve();
+        } catch (e) {
+            reject(e);
+        }
+    });
+}
+
+module.exports = {
+    createNewUser,
+    getAllUser,
+    getUserInfoById,
+    updateUser,
+    deleteUserById
+};

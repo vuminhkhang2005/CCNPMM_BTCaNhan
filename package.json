@@ -1,28 +1,31 @@
 {
-  "name": "crud-express",
+  "name": "btvn01",
   "version": "1.0.0",
+  "description": "",
   "main": "server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "nodemon --exec babel-node src/server.js"
   },
-  "author": "Vu Minh Khang - 23110238",
+  "keywords": [],
+  "author": "",
   "license": "ISC",
-  "description": "CRUD Express.js Sequelize MySQL - Vu Minh Khang 23110238",
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "body-parser": "^2.2.2",
     "dotenv": "^17.4.2",
     "ejs": "^5.0.2",
     "express": "^5.2.1",
-    "mysql2": "^3.22.3",
-    "sequelize": "^6.37.8"
+    "express-rate-limit": "^8.5.1",
+    "express-validator": "^7.3.2",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^9.6.1",
+    "nodemailer": "^8.0.7"
   },
   "devDependencies": {
     "@babel/core": "^7.29.0",
     "@babel/node": "^7.29.0",
     "@babel/preset-env": "^7.29.3",
-    "nodemon": "^3.1.14",
-    "sequelize-cli": "^6.6.5"
+    "nodemon": "^3.1.14"
   }
 }

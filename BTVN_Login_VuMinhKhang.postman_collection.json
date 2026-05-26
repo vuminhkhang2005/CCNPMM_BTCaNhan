@@ -1,0 +1,277 @@
+{
+  "info": {
+    "_postman_id": "c1f7a0b3-b1d3-4f1e-9a2f-1e9a2f3a4b5c",
+    "name": "BTVN_Login_VuMinhKhang",
+    "description": "Collection test API Login với 4 lớp bảo mật (Rate Limit, Validation, JWT, RBAC)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Success Cases (Thành công)",
+      "item": [
+        {
+          "name": "Login - Admin Success",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"admin@chatapp.com\",\n    \"password\": \"Admin@123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "http://localhost:8088/api/login",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8088",
+              "path": ["api", "login"]
+            }
+          }
+        },
+        {
+          "name": "Login - User Success",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"user@chatapp.com\",\n    \"password\": \"User@123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "http://localhost:8088/api/login",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8088",
+              "path": ["api", "login"]
+            }
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"refreshToken\": \"<PUT_REFRESH_TOKEN_HERE>\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "http://localhost:8088/api/refresh-token",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8088",
+              "path": ["api", "refresh-token"]
+            }
+          }
+        },
+        {
+          "name": "User Profile (Auth Required)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "<PUT_ACCESS_TOKEN_HERE>", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8088/user/profile",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8088",
+              "path": ["user", "profile"]
+            }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"refreshToken\": \"<PUT_REFRESH_TOKEN_HERE>\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "http://localhost:8088/api/logout",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8088",
+              "path": ["api", "logout"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Fail Cases (Thất bại - Security Layers)",
+      "item": [
+        {
+          "name": "Login Fail - Wrong Password (Lớp Auth)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"admin@chatapp.com\",\n    \"password\": \"WrongPassword123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "http://localhost:8088/api/login",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8088",
+              "path": ["api", "login"]
+            }
+          }
+        },
+        {
+          "name": "Login Fail - Email Not Found (Lớp Auth)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"nonexistent@chatapp.com\",\n    \"password\": \"Admin@123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "http://localhost:8088/api/login",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8088",
+              "path": ["api", "login"]
+            }
+          }
+        },
+        {
+          "name": "Login Fail - Invalid Email Format (Lớp 2: Validation)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"invalid-email\",\n    \"password\": \"Admin@123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "http://localhost:8088/api/login",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8088",
+              "path": ["api", "login"]
+            }
+          }
+        },
+        {
+          "name": "Login Fail - Password too short (Lớp 2: Validation)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"admin@chatapp.com\",\n    \"password\": \"123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "http://localhost:8088/api/login",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8088",
+              "path": ["api", "login"]
+            }
+          }
+        },
+        {
+          "name": "Profile Fail - No Token (Lớp 3: Authentication)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8088/user/profile",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8088",
+              "path": ["user", "profile"]
+            }
+          }
+        },
+        {
+          "name": "Admin Profile Fail - User Role (Lớp 4: Authorization)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "<PUT_USER_ACCESS_TOKEN_HERE>", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8088/admin/profile",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8088",
+              "path": ["admin", "profile"]
+            }
+          }
+        },
+        {
+          "name": "Refresh Token Fail - Invalid Token",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"refreshToken\": \"invalid_token_string\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "http://localhost:8088/api/refresh-token",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8088",
+              "path": ["api", "refresh-token"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
