@@ -380,6 +380,11 @@ const staticProducts = [
 ];
 
 // Helper functions for static search/filtering
+const getPositiveNumber = (val, defaultValue) => {
+    const num = parseInt(val, 10);
+    return isNaN(num) || num <= 0 ? defaultValue : num;
+};
+
 const normalize = (value = "") => value.toString().trim().toLowerCase();
 const getCategoryInfo = (categoryId) => staticCategories.find((cat) => cat.id === categoryId);
 const attachCategory = (product) => ({ ...product, categoryInfo: getCategoryInfo(product.category) });
