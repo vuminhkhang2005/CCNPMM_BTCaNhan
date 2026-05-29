@@ -231,7 +231,7 @@ const forgotPasswordService = async (email) => {
             
             return {
                 EC: 0,
-                EM: `(Mock Mode) Mã khôi phục mật khẩu đã in ra log server: ${resetToken}`,
+                EM: `(Mock Mode) Password reset code printed to server log: ${resetToken}`,
             };
         }
 
@@ -255,7 +255,6 @@ const forgotPasswordService = async (email) => {
                     <span style="font-size: 24px; font-weight: bold; color: #1890ff;">${resetToken}</span>
                 </div>
                 <p>This code will expire in 15 minutes.</p>
-                <p style="margin-top: 1rem; color: #555;">Additional note: <strong>wnzo kjuk evsp qjzy</strong></p>
                 <p style="font-size: 0.9rem; color: #777;">If you did not request this, please ignore this email.</p>
             </div>
         `;
