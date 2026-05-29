@@ -30,12 +30,26 @@ if (!global.mockUsers) {
 const initTransporter = async () => {
     if (transporter) return transporter;
 
+    if (process.env.EMAIL_SERVICE === "ethereal") {
+        const testAccount = await nodemailer.createTestAccount();
+        transporter = nodemailer.createTransport({
+            host: "smtp.ethereal.email",
+            port: 587,
+            secure: false,
+            auth: {
+                user: testAccount.user,
+                pass: testAccount.pass,
+            },
+        });
+        return transporter;
+    }
+
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
         return null;
     }
 
     transporter = nodemailer.createTransport({
-        service: "gmail",
+        service: process.env.EMAIL_SERVICE || "gmail",
         auth: {
             user: process.env.EMAIL_USER,
             pass: process.env.EMAIL_PASS,
@@ -53,13 +67,18 @@ const sendEmail = async (to, subject, html) => {
         }
 
         const info = await transport.sendMail({
-            from: `"FullStack App" <${process.env.EMAIL_USER}>`,
+            from: `"FullStack App" <${process.env.EMAIL_USER || "no-reply@fullstackapp.local"}>`,
             to,
             subject,
             html,
         });
 
-        return { success: true, messageId: info.messageId };
+        const previewUrl = nodemailer.getTestMessageUrl(info);
+        if (previewUrl) {
+            console.log(">>> Ethereal preview URL:", previewUrl);
+        }
+
+        return { success: true, messageId: info.messageId, previewUrl };
     } catch (error) {
         return { success: false, error: error.message };
     }
@@ -236,6 +255,8 @@ const forgotPasswordService = async (email) => {
                     <span style="font-size: 24px; font-weight: bold; color: #1890ff;">${resetToken}</span>
                 </div>
                 <p>This code will expire in 15 minutes.</p>
+                <p style="margin-top: 1rem; color: #555;">Additional note: <strong>wnzo kjuk evsp qjzy</strong></p>
+                <p style="font-size: 0.9rem; color: #777;">If you did not request this, please ignore this email.</p>
             </div>
         `;
 

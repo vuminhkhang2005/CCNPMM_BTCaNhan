@@ -12,6 +12,8 @@ import CartPage from "./pages/cart.jsx";
 import CheckoutPage from "./pages/checkout.jsx";
 import OrdersPage from "./pages/orders.jsx";
 import AdminOrdersPage from "./pages/admin-orders.jsx";
+import ForgotPasswordPage from "./pages/forgot-password.jsx";
+import ResetPasswordPage from "./pages/reset-password.jsx";
 import { AuthWrapper } from "./components/context/auth.context.jsx";
 import { CartWrapper } from "./components/context/cart.context.jsx";
 
@@ -31,6 +33,8 @@ const router = createBrowserRouter([
   },
   { path: "login", element: <LoginPage /> },
   { path: "register", element: <RegisterPage /> },
+  { path: "forgot-password", element: <ForgotPasswordPage /> },
+  { path: "reset-password", element: <ResetPasswordPage /> },
 ]);
 
 ReactDOM.createRoot(document.getElementById("root")).render(

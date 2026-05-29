@@ -4,6 +4,8 @@ const createUserApi = (name, email, password) => axios.post("/v1/api/register", 
 const loginApi = (email, password) => axios.post("/v1/api/login", { email, password });
 const getUserApi = () => axios.get("/v1/api/user");
 const getAccountApi = () => axios.get("/v1/api/account");
+const forgotPasswordApi = (email) => axios.post("/v1/api/forgot-password", { email });
+const resetPasswordApi = (email, resetToken, newPassword) => axios.post("/v1/api/reset-password", { email, resetToken, newPassword });
 const getProductsApi = (params = {}) => axios.get("/v1/api/products", { params });
 const getProductsByCategoryApi = (params = {}) => axios.get("/v1/api/products/by-category", { params });
 const getProductRankingApi = (params = {}) => axios.get("/v1/api/products/ranking", { params });
@@ -42,5 +44,7 @@ export {
   getOrderByIdApi,
   cancelOrderApi,
   updateOrderStatusApi,
+  forgotPasswordApi,
+  resetPasswordApi,
 };
 
