@@ -46,6 +46,10 @@ const LoginPage = () => {
           </Form>
           <Link to="/"><ArrowLeftOutlined /> Back to home</Link>
           <Divider />
+          <div style={{ marginBottom: 8 }}>
+            <Link to="/forgot-password">Forgot your password?</Link>
+          </div>
+          <Divider />
           <div style={{ textAlign: "center" }}>Do not have an account? <Link to="/register">Register here</Link></div>
         </fieldset>
       </Col>
