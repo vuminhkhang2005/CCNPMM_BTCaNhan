@@ -10,6 +10,14 @@ const getProductsApi = (params = {}) => axios.get("/v1/api/products", { params }
 const getProductsByCategoryApi = (params = {}) => axios.get("/v1/api/products/by-category", { params });
 const getProductRankingApi = (params = {}) => axios.get("/v1/api/products/ranking", { params });
 const getProductDetailApi = (slug) => axios.get(`/v1/api/products/${slug}`);
+const getProductReviewsApi = (slug) => axios.get(`/v1/api/products/${slug}/reviews`);
+const createProductReviewApi = (slug, payload) => axios.post(`/v1/api/products/${slug}/reviews`, payload);
+const toggleFavoriteApi = (slug, payload = {}) => axios.post(`/v1/api/products/${slug}/favorite`, payload);
+const getFavoritesApi = () => axios.get("/v1/api/favorites");
+const getViewedProductsApi = () => axios.get("/v1/api/viewed-products");
+const getCouponsApi = () => axios.get("/v1/api/coupons");
+const validateCouponApi = (payload) => axios.post("/v1/api/coupons/validate", payload);
+const getWalletApi = () => axios.get("/v1/api/wallet");
 
 // Cart API operations
 const getCartApi = () => axios.get("/v1/api/cart");
@@ -34,6 +42,14 @@ export {
   getProductsByCategoryApi,
   getProductRankingApi,
   getProductDetailApi,
+  getProductReviewsApi,
+  createProductReviewApi,
+  toggleFavoriteApi,
+  getFavoritesApi,
+  getViewedProductsApi,
+  getCouponsApi,
+  validateCouponApi,
+  getWalletApi,
   getCartApi,
   addToCartApi,
   updateCartItemApi,

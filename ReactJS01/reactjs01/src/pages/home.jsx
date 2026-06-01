@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { notification, Spin } from "antd";
 import { EyeOutlined, FilterOutlined, LeftOutlined, LogoutOutlined, ReloadOutlined, RightOutlined, SearchOutlined, ShoppingCartOutlined, StarFilled } from "@ant-design/icons";
 import { AuthContext } from "../components/context/auth";
-import { getProductRankingApi, getProductsApi, getProductsByCategoryApi } from "../util/api";
+import { getFavoritesApi, getProductRankingApi, getProductsApi, getProductsByCategoryApi, getViewedProductsApi } from "../util/api";
 
 const initialFilters = {
   keyword: "",
@@ -164,6 +164,8 @@ const HomePage = () => {
   const [categoryGroups, setCategoryGroups] = useState([]);
   const [categoryPagination, setCategoryPagination] = useState({ page: 1, totalPages: 1, total: 0, hasMore: false });
   const [categoryLoading, setCategoryLoading] = useState(false);
+  const [favoriteProducts, setFavoriteProducts] = useState([]);
+  const [viewedProducts, setViewedProducts] = useState([]);
   const loadMoreRef = useRef(null);
 
   const handleLogout = () => {
@@ -190,6 +192,25 @@ const HomePage = () => {
     }, 250);
     return () => clearTimeout(timer);
   }, [auth.isAuthenticated, filters]);
+
+  useEffect(() => {
+    if (!auth.isAuthenticated) return;
+
+    const fetchPersonalLanes = async () => {
+      const [favoritesRes, viewedRes] = await Promise.all([
+        getFavoritesApi(),
+        getViewedProductsApi(),
+      ]);
+      if (favoritesRes?.EC === 0) {
+        setFavoriteProducts(favoritesRes.products || []);
+      }
+      if (viewedRes?.EC === 0) {
+        setViewedProducts(viewedRes.products || []);
+      }
+    };
+
+    fetchPersonalLanes();
+  }, [auth.isAuthenticated]);
 
   useEffect(() => {
     if (!auth.isAuthenticated) return;
@@ -334,6 +355,8 @@ const HomePage = () => {
 
       {loading ? <div className="grid min-h-80 place-items-center"><Spin /></div> : (
         <>
+          <ProductLane title="Favorite products" icon={<StarFilled className="text-rose-600" />} products={favoriteProducts.slice(0, 3)} />
+          <ProductLane title="Recently viewed" icon={<EyeOutlined className="text-emerald-700" />} products={viewedProducts.slice(0, 3)} />
           <ProductLane title="Deals" icon={<StarFilled className="text-rose-600" />} products={promoProducts} />
           <ProductLane title="New arrivals" icon={<ShoppingCartOutlined className="text-sky-600" />} products={newestProducts} />
           <RankingLane type="best-seller" title="Top 10 best sellers" icon={<StarFilled className="text-amber-500" />} />

@@ -4,7 +4,7 @@ const bcrypt = require("bcrypt");
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const nodemailer = require("nodemailer");
-const User = require("../models/user");
+const userRepository = require("../repositories/userRepository");
 
 const saltRounds = 10;
 let transporter = null;
@@ -16,13 +16,19 @@ if (!global.mockUsers) {
             name: "Admin Manager",
             email: "admin@rungear.com",
             password: bcrypt.hashSync("adminpassword", saltRounds),
-            role: "ADMIN"
+            role: "ADMIN",
+            points: 0,
+            favoriteProducts: [],
+            viewedProducts: [],
         },
         {
             name: "Regular Member",
             email: "user@rungear.com",
             password: bcrypt.hashSync("userpassword", saltRounds),
-            role: "USER"
+            role: "USER",
+            points: 0,
+            favoriteProducts: [],
+            viewedProducts: [],
         }
     ];
 }
@@ -100,7 +106,10 @@ const createUserService = async (name, email, password) => {
                 name,
                 email,
                 password: hashPassword,
-                role: "USER"
+                role: "USER",
+                points: 0,
+                favoriteProducts: [],
+                viewedProducts: [],
             };
             global.mockUsers.push(newUser);
             return {
@@ -111,7 +120,7 @@ const createUserService = async (name, email, password) => {
         }
 
         // DB implementation
-        const user = await User.findOne({ email });
+        const user = await userRepository.findByEmail(email);
         if (user) {
             return {
                 EC: 1,
@@ -120,11 +129,14 @@ const createUserService = async (name, email, password) => {
         }
 
         const hashPassword = await bcrypt.hash(password, saltRounds);
-        const result = await User.create({
+        const result = await userRepository.create({
             name,
             email,
             password: hashPassword,
             role: "USER",
+            points: 0,
+            favoriteProducts: [],
+            viewedProducts: [],
         });
 
         return {
@@ -169,7 +181,7 @@ const loginService = async (email, password) => {
         }
 
         // DB implementation
-        const user = await User.findOne({ email });
+        const user = await userRepository.findByEmail(email);
         if (!user) {
             return { EC: 1, EM: "Email or password is incorrect" };
         }
@@ -209,7 +221,7 @@ const getUserService = async () => {
             // Memory fallback
             return global.mockUsers.map((u) => ({ name: u.name, email: u.email, role: u.role }));
         }
-        return await User.find({}).select("-password");
+        return await userRepository.findAllWithoutPassword();
     } catch (error) {
         console.log(">>> Error at getUserService: ", error);
         return [];
@@ -236,7 +248,7 @@ const forgotPasswordService = async (email) => {
         }
 
         // DB implementation
-        const user = await User.findOne({ email });
+        const user = await userRepository.findByEmail(email);
         if (!user) {
             return { EC: 1, EM: "Email does not exist in the system" };
         }
@@ -244,7 +256,7 @@ const forgotPasswordService = async (email) => {
         const resetToken = crypto.randomBytes(3).toString("hex").toUpperCase();
         user.passwordResetToken = resetToken;
         user.passwordResetExpires = new Date(Date.now() + 15 * 60 * 1000);
-        await user.save();
+        await userRepository.save(user);
 
         const html = `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -290,7 +302,7 @@ const resetPasswordService = async (email, resetToken, newPassword) => {
         }
 
         // DB implementation
-        const user = await User.findOne({ email });
+        const user = await userRepository.findByEmail(email);
         if (!user) return { EC: 1, EM: "Email does not exist" };
         if (user.passwordResetToken !== resetToken) return { EC: 2, EM: "Reset code is incorrect" };
         if (new Date() > user.passwordResetExpires) {
@@ -300,7 +312,7 @@ const resetPasswordService = async (email, resetToken, newPassword) => {
         user.password = await bcrypt.hash(newPassword, saltRounds);
         user.passwordResetToken = undefined;
         user.passwordResetExpires = undefined;
-        await user.save();
+        await userRepository.save(user);
 
         return { EC: 0, EM: "Password reset successfully. Please login again." };
     } catch (error) {

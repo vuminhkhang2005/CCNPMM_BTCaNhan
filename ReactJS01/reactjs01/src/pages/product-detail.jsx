@@ -1,7 +1,7 @@
 import { useContext, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { notification, Spin } from "antd";
-import { ArrowLeftOutlined, MinusOutlined, PlusOutlined, ShoppingCartOutlined, StarFilled, TagOutlined } from "@ant-design/icons";
+import { Alert, Button, Empty, Input, Rate, Select, Spin, Tag, notification } from "antd";
+import { ArrowLeftOutlined, HeartFilled, HeartOutlined, MinusOutlined, PlusOutlined, ShoppingCartOutlined, StarFilled, TagOutlined, UserOutlined } from "@ant-design/icons";
 import { Autoplay, Navigation, Pagination } from "swiper/modules";
 import { Swiper, SwiperSlide } from "swiper/react";
 import "swiper/css";
@@ -9,7 +9,7 @@ import "swiper/css/navigation";
 import "swiper/css/pagination";
 import { AuthContext } from "../components/context/auth";
 import { CartContext } from "../components/context/cart.context";
-import { getProductDetailApi } from "../util/api";
+import { createProductReviewApi, getProductDetailApi, getProductReviewsApi, toggleFavoriteApi } from "../util/api";
 
 const formatCurrency = (value) => new Intl.NumberFormat("vi-VN", {
   style: "currency",
@@ -46,6 +46,15 @@ const ProductDetailPage = () => {
   const [selectedSize, setSelectedSize] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [reviews, setReviews] = useState([]);
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [canReview, setCanReview] = useState(false);
+  const [reviewableOrders, setReviewableOrders] = useState([]);
+  const [reviewOrderId, setReviewOrderId] = useState("");
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState("");
+  const [favoriteLoading, setFavoriteLoading] = useState(false);
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
 
   useEffect(() => {
     if (!auth.isAuthenticated) return;
@@ -60,6 +69,11 @@ const ProductDetailPage = () => {
           setQuantity(res.product.stock > 0 ? 1 : 0);
           setSelectedColor(res.product.colors?.[0] || "");
           setSelectedSize(res.product.sizes?.[0] || "");
+          setReviews(res.reviews || []);
+          setIsFavorite(Boolean(res.isFavorite));
+          setCanReview(Boolean(res.canReview));
+          setReviewableOrders(res.reviewableOrders || []);
+          setReviewOrderId(res.reviewableOrders?.[0]?._id || "");
         } else {
           setError(res?.EM || "Product not found");
         }
@@ -76,6 +90,76 @@ const ProductDetailPage = () => {
   const increaseQuantity = () => {
     if (!product) return;
     setQuantity((value) => Math.min(product.stock, value + 1));
+  };
+
+  const refreshReviews = async () => {
+    const res = await getProductReviewsApi(slug);
+    if (res?.EC === 0) {
+      setReviews(res.reviews || []);
+    }
+  };
+
+  const handleToggleFavorite = async () => {
+    if (!product) return;
+
+    setFavoriteLoading(true);
+    try {
+      const res = await toggleFavoriteApi(product.slug, {
+        productId: product.id,
+        product,
+      });
+      if (res?.EC === 0) {
+        setIsFavorite(Boolean(res.isFavorite));
+        notification.success({
+          message: "Favorites",
+          description: res.EM,
+        });
+      } else {
+        notification.error({
+          message: "Favorites",
+          description: res?.EM || "Could not update favorite product.",
+        });
+      }
+    } finally {
+      setFavoriteLoading(false);
+    }
+  };
+
+  const handleSubmitReview = async () => {
+    if (!reviewComment.trim()) {
+      notification.warning({
+        message: "Review",
+        description: "Please enter your comment.",
+      });
+      return;
+    }
+
+    setReviewSubmitting(true);
+    try {
+      const res = await createProductReviewApi(slug, {
+        orderId: reviewOrderId,
+        rating: reviewRating,
+        comment: reviewComment,
+      });
+      if (res?.EC === 0) {
+        notification.success({
+          message: "Review submitted",
+          description: `You received ${res.reward?.points || 0} points and coupon ${res.reward?.coupon?.code || ""}.`,
+        });
+        setReviewComment("");
+        setReviewRating(5);
+        setCanReview(false);
+        setReviewableOrders([]);
+        await refreshReviews();
+      } else {
+        notification.error({
+          message: "Review failed",
+          description: res?.EM || "Could not submit review.",
+        });
+      }
+    } finally {
+      setReviewSubmitting(false);
+    }
   };
   const handleAddToCart = async () => {
     if (!selectedColor || !selectedSize) {
@@ -155,6 +239,9 @@ const ProductDetailPage = () => {
           <div className="flex flex-wrap items-center gap-3 text-sm font-semibold">
             <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-3 py-1 text-amber-700"><StarFilled /> {product.rating} ({product.reviewCount} reviews)</span>
             <span className="rounded-md bg-stone-100 px-3 py-1 text-stone-700">Sold {product.sold}</span>
+            <span className="rounded-md bg-stone-100 px-3 py-1 text-stone-700">{product.stats?.buyerCount || 0} buyers</span>
+            <span className="rounded-md bg-stone-100 px-3 py-1 text-stone-700">{product.stats?.commentCount ?? reviews.length} comments</span>
+            <span className="rounded-md bg-stone-100 px-3 py-1 text-stone-700">{product.stats?.favoriteCount || 0} favorites</span>
             <span className={isOutOfStock ? "rounded-md bg-rose-50 px-3 py-1 text-rose-700" : "rounded-md bg-emerald-50 px-3 py-1 text-emerald-700"}>{isOutOfStock ? "Out of stock" : `${product.stock} in stock`}</span>
           </div>
           <div className="border-y border-stone-200 py-5">
@@ -214,6 +301,16 @@ const ProductDetailPage = () => {
               <button type="button" onClick={increaseQuantity} disabled={quantity >= product.stock || isOutOfStock} className="grid w-12 place-items-center text-stone-700 disabled:cursor-not-allowed disabled:text-stone-300"><PlusOutlined /></button>
             </div>
             <button type="button" onClick={handleAddToCart} disabled={isOutOfStock} className="inline-flex h-12 items-center gap-2 rounded-md bg-emerald-700 px-5 text-sm font-black text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-stone-300"><ShoppingCartOutlined /> Add to cart</button>
+            <Button
+              type={isFavorite ? "primary" : "default"}
+              danger={isFavorite}
+              loading={favoriteLoading}
+              icon={isFavorite ? <HeartFilled /> : <HeartOutlined />}
+              onClick={handleToggleFavorite}
+              className="h-12 font-bold"
+            >
+              {isFavorite ? "Favorited" : "Favorite"}
+            </Button>
           </div>
 
           <div className="rounded-md border border-stone-200 bg-white p-5">
@@ -222,6 +319,75 @@ const ProductDetailPage = () => {
             <p className="mt-4 text-sm leading-6 text-stone-500">Category: <span className="font-bold text-stone-800">{product.categoryInfo?.name}</span> - {product.categoryInfo?.description}</p>
           </div>
         </div>
+      </section>
+
+      <section className="mx-auto grid max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:px-8">
+        <div className="rounded-md border border-stone-200 bg-white p-5 shadow-sm">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-2xl font-black text-stone-950">Comments and ratings</h2>
+            <Tag color="gold">{reviews.length} comments</Tag>
+          </div>
+          {reviews.length === 0 ? (
+            <Empty description="No comments yet" />
+          ) : (
+            <div className="space-y-4">
+              {reviews.map((review) => (
+                <article key={review._id || `${review.userEmail}-${review.createdAt}`} className="rounded-md border border-stone-200 bg-stone-50 p-4">
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-sm font-bold text-stone-900">
+                      <UserOutlined />
+                      <span>{review.userName || review.userEmail}</span>
+                    </div>
+                    <Rate disabled value={Number(review.rating)} />
+                  </div>
+                  <p className="text-sm leading-6 text-stone-700">{review.comment}</p>
+                  <p className="mt-2 text-xs font-semibold text-stone-400">{new Date(review.createdAt).toLocaleString("vi-VN")}</p>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <aside className="rounded-md border border-stone-200 bg-white p-5 shadow-sm">
+          <h3 className="text-xl font-black text-stone-950">Review reward</h3>
+          <p className="mt-2 text-sm leading-6 text-stone-600">
+            Customers can review products from successful, non-cancelled orders. Each accepted review gives 50 points and a personal discount coupon.
+          </p>
+
+          {canReview ? (
+            <div className="mt-5 space-y-4">
+              {reviewableOrders.length > 1 && (
+                <Select
+                  value={reviewOrderId}
+                  onChange={setReviewOrderId}
+                  className="w-full"
+                  options={reviewableOrders.map((order) => ({
+                    value: order._id,
+                    label: `Order ${order._id.slice(-8).toUpperCase()}`,
+                  }))}
+                />
+              )}
+              <Rate value={reviewRating} onChange={setReviewRating} />
+              <Input.TextArea
+                rows={4}
+                value={reviewComment}
+                onChange={(event) => setReviewComment(event.target.value)}
+                placeholder="Share your experience after using this product..."
+              />
+              <Button type="primary" block loading={reviewSubmitting} onClick={handleSubmitReview}>
+                Submit review and claim reward
+              </Button>
+            </div>
+          ) : (
+            <Alert
+              className="mt-5"
+              type="info"
+              showIcon
+              message="Review locked"
+              description="You need a successful, non-cancelled order containing this product, and each purchased item can be reviewed once."
+            />
+          )}
+        </aside>
       </section>
 
       {similarProducts.length > 0 && (

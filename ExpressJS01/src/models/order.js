@@ -21,6 +21,12 @@ const orderSchema = new mongoose.Schema(
             email: { type: String, required: true }
         },
         items: [orderItemSchema],
+        subtotalAmount: { type: Number, default: 0 },
+        discountAmount: { type: Number, default: 0 },
+        couponCode: { type: String },
+        couponDiscount: { type: Number, default: 0 },
+        pointsUsed: { type: Number, default: 0 },
+        pointsDiscount: { type: Number, default: 0 },
         totalAmount: { type: Number, required: true },
         paymentMethod: { type: String, default: "COD" }, // "COD", "MOMO", "VNPAY"
         paymentStatus: { type: String, default: "Pending" }, // "Pending", "Paid"

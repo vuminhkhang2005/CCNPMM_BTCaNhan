@@ -1,6 +1,9 @@
-const Product = require("../models/product");
-const Category = require("../models/category");
-const seedData = require("../config/seed");
+const productRepository = require("../repositories/productRepository");
+const categoryRepository = require("../repositories/categoryRepository");
+const orderRepository = require("../repositories/orderRepository");
+const reviewRepository = require("../repositories/reviewRepository");
+const userRepository = require("../repositories/userRepository");
+const { recordViewedProduct } = require("./productEngagementService");
 
 // Load static fallback arrays from seed config
 const staticCategories = [
@@ -389,6 +392,48 @@ const normalize = (value = "") => value.toString().trim().toLowerCase();
 const getCategoryInfo = (categoryId) => staticCategories.find((cat) => cat.id === categoryId);
 const attachCategory = (product) => ({ ...product, categoryInfo: getCategoryInfo(product.category) });
 
+const getMockUser = (email) => global.mockUsers?.find((user) => user.email === email);
+
+const getMockProductStats = (productId) => {
+    const buyerEmails = new Set((global.mockOrders || [])
+        .filter((order) => (
+            order.status !== 6
+            && !order.cancelRequested
+            && order.items?.some((item) => Number(item.productId) === Number(productId))
+        ))
+        .map((order) => order.userEmail));
+    const commentCount = (global.mockReviews || []).filter((review) => Number(review.productId) === Number(productId)).length;
+    const favoriteCount = (global.mockUsers || []).filter((user) => (user.favoriteProducts || []).map(Number).includes(Number(productId))).length;
+
+    return {
+        buyerCount: buyerEmails.size,
+        commentCount,
+        favoriteCount,
+    };
+};
+
+const getMockReviewContext = (email, product) => {
+    const reviewableOrderCandidates = (global.mockOrders || [])
+        .filter((order) => (
+            order.userEmail === email
+            && order.status !== 6
+            && !order.cancelRequested
+            && order.items?.some((item) => Number(item.productId) === Number(product.id))
+        ));
+    const reviewableOrders = reviewableOrderCandidates
+        .filter((order) => !(global.mockReviews || []).some((review) => (
+            review.userEmail === email
+            && Number(review.productId) === Number(product.id)
+            && review.orderId === order._id
+        )))
+        .map((order) => ({ _id: order._id, createdAt: order.createdAt }));
+
+    return {
+        canReview: reviewableOrders.length > 0,
+        reviewableOrders,
+    };
+};
+
 const paginateArray = (items, page = 1, limit = 8) => {
     const safePage = getPositiveNumber(page, 1);
     const safeLimit = getPositiveNumber(limit, 8);
@@ -480,22 +525,15 @@ const getProductsService = async (query = {}) => {
 
     // Active MongoDB Mongoose queries
     try {
-        const mongoQuery = buildMongoQuery(query);
-        const sortObj = getMongoSort(query.sort);
-
         const page = getPositiveNumber(query.page, 1);
         const limit = getPositiveNumber(query.limit, 8);
         const skip = (page - 1) * limit;
 
-        const total = await Product.countDocuments(mongoQuery);
+        const total = await productRepository.countByFilters(query);
         const totalPages = Math.max(Math.ceil(total / limit), 1);
 
-        const products = await Product.find(mongoQuery)
-            .sort(sortObj)
-            .skip(skip)
-            .limit(limit);
-
-        const categories = await Category.find({});
+        const products = await productRepository.findByFilters({ query, skip, limit });
+        const categories = await categoryRepository.findAll();
 
         const mappedProducts = products.map((prod) => {
             const categoryInfo = categories.find((cat) => cat.id === prod.category);
@@ -551,11 +589,8 @@ const getProductsByCategoryService = async (query = {}) => {
     }
 
     try {
-        const mongoQuery = buildMongoQuery(query);
-        const sortObj = getMongoSort(query.sort);
-
-        const products = await Product.find(mongoQuery).sort(sortObj);
-        const categories = await Category.find({});
+        const products = await productRepository.findAllByFilters(query);
+        const categories = await categoryRepository.findAll();
 
         const categoryGroups = categories.map((cat) => {
             const catProducts = products
@@ -616,10 +651,6 @@ const getProductRankingService = async (query = {}) => {
 
     try {
         const type = query.type === "most-viewed" ? "most-viewed" : "best-seller";
-        const sortObj = type === "most-viewed"
-            ? { viewCount: -1, sold: -1 }
-            : { sold: -1, viewCount: -1 };
-
         const page = getPositiveNumber(query.page, 1);
         const limit = getPositiveNumber(query.limit, 4);
         const skip = (page - 1) * limit;
@@ -627,12 +658,10 @@ const getProductRankingService = async (query = {}) => {
         const total = 10;
         const totalPages = Math.max(Math.ceil(total / limit), 1);
 
-        const products = await Product.find({})
-            .sort(sortObj)
-            .limit(10);
+        const products = await productRepository.findRanking(type);
 
         const paginatedProducts = products.slice(skip, skip + limit);
-        const categories = await Category.find({});
+        const categories = await categoryRepository.findAll();
 
         const mappedProducts = paginatedProducts.map((prod) => {
             const categoryInfo = categories.find((cat) => cat.id === prod.category);
@@ -668,7 +697,7 @@ const getProductCategoriesService = async () => {
     }
 
     try {
-        const categories = await Category.find({});
+        const categories = await categoryRepository.findAll();
         return {
             EC: 0,
             EM: "Categories loaded successfully",
@@ -680,13 +709,14 @@ const getProductCategoriesService = async () => {
     }
 };
 
-const getProductDetailService = async (slug) => {
+const getProductDetailService = async (slug, email) => {
     if (!global.dbConnected) {
         const product = staticProducts.find((item) => item.slug === slug);
         if (!product) {
             return { EC: 1, EM: "Product not found" };
         }
         product.viewCount = (product.viewCount || 0) + 1;
+        await recordViewedProduct(email, attachCategory(product));
 
         const similarProducts = staticProducts
             .filter((item) => item.category === product.category && item.slug !== product.slug)
@@ -697,112 +727,84 @@ const getProductDetailService = async (slug) => {
         return {
             EC: 0,
             EM: "Product detail loaded successfully (Fallback Memory)",
-            product: attachCategory(product),
+            product: {
+                ...attachCategory(product),
+                stats: getMockProductStats(product.id),
+            },
             similarProducts,
+            reviews: (global.mockReviews || []).filter((review) => review.productSlug === product.slug),
+            isFavorite: (getMockUser(email)?.favoriteProducts || []).map(Number).includes(Number(product.id)),
+            ...getMockReviewContext(email, product),
         };
     }
 
     try {
-        const product = await Product.findOne({ slug });
+        const product = await productRepository.findBySlug(slug);
         if (!product) {
             return { EC: 1, EM: "Product not found" };
         }
 
         product.viewCount = (product.viewCount || 0) + 1;
-        await product.save();
+        await productRepository.save(product);
 
-        const categories = await Category.find({});
+        const categories = await categoryRepository.findAll();
         const categoryInfo = categories.find((cat) => cat.id === product.category);
+        const user = await userRepository.findByEmail(email);
+        await recordViewedProduct(email, { ...product.toObject(), categoryInfo });
 
-        const similarProducts = await Product.find({
+        const similarProducts = await productRepository.findSimilar({
             category: product.category,
-            slug: { $ne: product.slug }
-        })
-            .sort({ rating: -1, sold: -1 })
-            .limit(4);
+            excludedSlug: product.slug,
+        });
 
         const mappedSimilar = similarProducts.map((prod) => {
             const catInfo = categories.find((cat) => cat.id === prod.category);
             return { ...prod.toObject(), categoryInfo: catInfo };
         });
 
+        const [
+            buyerCount,
+            commentCount,
+            favoriteCount,
+            reviews,
+            reviewableOrderCandidates,
+        ] = await Promise.all([
+            orderRepository.countBuyersByProductId(product.id),
+            reviewRepository.countByProductId(product.id),
+            userRepository.countFavoritesByProductId(product.id),
+            reviewRepository.findByProductId(product.id),
+            user ? orderRepository.findReviewableOrdersWithProduct({ userId: user._id, productId: product.id }) : [],
+        ]);
+
+        const reviewableOrders = [];
+        for (const order of reviewableOrderCandidates) {
+            const existingReview = await reviewRepository.findByUserProductOrder({
+                userEmail: email,
+                productId: product.id,
+                orderId: order._id,
+            });
+            if (!existingReview) {
+                reviewableOrders.push({ _id: order._id, createdAt: order.createdAt });
+            }
+        }
+
         return {
             EC: 0,
             EM: "Product detail loaded successfully",
-            product: { ...product.toObject(), categoryInfo },
+            product: {
+                ...product.toObject(),
+                categoryInfo,
+                stats: { buyerCount, commentCount, favoriteCount },
+            },
             similarProducts: mappedSimilar,
+            reviews,
+            isFavorite: (user?.favoriteProducts || []).map(Number).includes(Number(product.id)),
+            canReview: reviewableOrders.length > 0,
+            reviewableOrders,
         };
     } catch (error) {
         console.error(">>> Error at getProductDetailService:", error);
         throw error;
-    }
-};
-
-// Internal MongoDB Query Builders
-const buildMongoQuery = (query = {}) => {
-    const mongoQuery = {};
-
-    const keyword = query.keyword ? query.keyword.trim().toLowerCase() : "";
-    if (keyword) {
-        mongoQuery.$or = [
-            { name: { $regex: keyword, $options: "i" } },
-            { description: { $regex: keyword, $options: "i" } },
-            { tags: { $in: [new RegExp(keyword, "i")] } }
-        ];
-    }
-
-    if (query.category) {
-        mongoQuery.category = query.category.trim().toLowerCase();
-    }
-
-    const minPrice = Number(query.minPrice) || 0;
-    const maxPrice = Number(query.maxPrice);
-    mongoQuery.price = { $gte: minPrice };
-    if (!isNaN(maxPrice)) {
-        mongoQuery.price.$lte = maxPrice;
-    }
-
-    const minRating = Number(query.minRating);
-    if (!isNaN(minRating) && minRating > 0) {
-        mongoQuery.rating = { $gte: minRating };
-    }
-
-    const stockStatus = query.stockStatus ? query.stockStatus.trim().toLowerCase() : "";
-    if (stockStatus === "in-stock") {
-        mongoQuery.stock = { $gt: 10 };
-    } else if (stockStatus === "low-stock") {
-        mongoQuery.stock = { $gt: 0, $lte: 10 };
-    } else if (stockStatus === "out-stock") {
-        mongoQuery.stock = 0;
-    }
-
-    const promotion = query.promotion ? query.promotion.trim().toLowerCase() : "";
-    if (promotion === "sale") {
-        mongoQuery.discount = { $gt: 0 };
-    } else if (promotion === "new") {
-        mongoQuery.isNew = true;
-    } else if (promotion === "best-seller") {
-        mongoQuery.bestSeller = true;
-    }
-
-    return mongoQuery;
-};
-
-const getMongoSort = (sortStr = "") => {
-    const sort = sortStr.trim().toLowerCase();
-    switch (sort) {
-        case "price-asc":
-            return { price: 1 };
-        case "price-desc":
-            return { price: -1 };
-        case "sold-desc":
-            return { sold: -1 };
-        case "rating-desc":
-            return { rating: -1 };
-        case "newest":
-            return { isNew: -1, id: 1 };
-        default:
-            return { bestSeller: -1, isNew: -1 };
     }
 };
 

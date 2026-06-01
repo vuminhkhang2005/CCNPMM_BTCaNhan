@@ -1,4 +1,5 @@
 import { useContext, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { AuthContext } from "../components/context/auth";
 import { getOrdersApi, cancelOrderApi } from "../util/api";
 import { CalendarOutlined, CarOutlined, CreditCardOutlined, HistoryOutlined, ShoppingOutlined, ClockCircleOutlined, ExclamationCircleOutlined } from "@ant-design/icons";
@@ -305,6 +306,11 @@ const OrdersPage = () => {
                           <p className="text-xs text-stone-500 font-semibold mt-1">
                             Màu sắc: {item.color} | Kích thước: {item.size} | Số lượng: {item.quantity}
                           </p>
+                          {selectedOrder.status !== 6 && !selectedOrder.cancelRequested && (
+                            <Link to={`/products/${item.slug}`} className="mt-1 inline-flex text-xs font-bold text-emerald-700 hover:text-emerald-950">
+                              Review purchased product
+                            </Link>
+                          )}
                         </div>
                         <div className="text-sm font-bold text-stone-950">
                           {formatCurrency(item.price * item.quantity)}

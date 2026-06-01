@@ -2,9 +2,9 @@ import { useContext, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { AuthContext } from "../components/context/auth";
 import { CartContext } from "../components/context/cart.context";
-import { createOrderApi } from "../util/api";
-import { CreditCardOutlined, DollarOutlined, PhoneOutlined, UserOutlined, HomeOutlined, MailOutlined, CheckCircleOutlined, ArrowLeftOutlined } from "@ant-design/icons";
-import { Form, Input, Radio, Modal, notification, Spin } from "antd";
+import { createOrderApi, getCouponsApi, getWalletApi, validateCouponApi } from "../util/api";
+import { ArrowLeftOutlined, CheckCircleOutlined, CreditCardOutlined, DollarOutlined, GiftOutlined, HomeOutlined, MailOutlined, PhoneOutlined, UserOutlined, WalletOutlined } from "@ant-design/icons";
+import { Alert, Button, Form, Input, Modal, Radio, Spin, Tag, notification } from "antd";
 
 const formatCurrency = (value) => new Intl.NumberFormat("vi-VN", {
   style: "currency",
@@ -25,6 +25,13 @@ const CheckoutPage = () => {
   const [momoModalVisible, setMomoModalVisible] = useState(false);
   const [vnpayModalVisible, setVnpayModalVisible] = useState(false);
   const [pendingOrderData, setPendingOrderData] = useState(null);
+  const [coupons, setCoupons] = useState([]);
+  const [wallet, setWallet] = useState({ points: 0, pointValue: 1000 });
+  const [couponCode, setCouponCode] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState(null);
+  const [couponDiscount, setCouponDiscount] = useState(0);
+  const [pointsToUse, setPointsToUse] = useState(0);
+  const [couponLoading, setCouponLoading] = useState(false);
 
   useEffect(() => {
     if (auth.isAuthenticated && auth.user) {
@@ -35,9 +42,69 @@ const CheckoutPage = () => {
     }
   }, [auth, form]);
 
+  useEffect(() => {
+    if (!auth.isAuthenticated) return;
+
+    const fetchRewards = async () => {
+      const [couponRes, walletRes] = await Promise.all([
+        getCouponsApi(),
+        getWalletApi(),
+      ]);
+      if (couponRes?.EC === 0) {
+        setCoupons(couponRes.coupons || []);
+      }
+      if (walletRes?.EC === 0) {
+        setWallet({
+          points: Number(walletRes.points || 0),
+          pointValue: Number(walletRes.pointValue || 1000),
+        });
+      }
+    };
+
+    fetchRewards();
+  }, [auth.isAuthenticated]);
+
   const getSubtotal = () => {
     if (!cart.items) return 0;
     return cart.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  };
+
+  const getPointsDiscount = () => {
+    const safePoints = Math.min(Math.max(Number(pointsToUse) || 0, 0), wallet.points);
+    const maxDiscount = Math.max(getSubtotal() - couponDiscount, 0);
+    return Math.min(safePoints * wallet.pointValue, maxDiscount);
+  };
+
+  const getPayableTotal = () => Math.max(getSubtotal() - couponDiscount - getPointsDiscount(), 0);
+
+  const handleApplyCoupon = async (code = couponCode) => {
+    const normalizedCode = code.trim().toUpperCase();
+    if (!normalizedCode) {
+      notification.warning({ message: "Coupon", description: "Please enter a coupon code." });
+      return;
+    }
+
+    setCouponLoading(true);
+    try {
+      const res = await validateCouponApi({ code: normalizedCode, subtotal: getSubtotal() });
+      if (res?.EC === 0) {
+        setAppliedCoupon(res.coupon);
+        setCouponCode(res.coupon.code);
+        setCouponDiscount(Number(res.discount || 0));
+        notification.success({ message: "Coupon applied", description: `${res.coupon.code} saved ${formatCurrency(res.discount)}` });
+      } else {
+        setAppliedCoupon(null);
+        setCouponDiscount(0);
+        notification.error({ message: "Coupon", description: res?.EM || "Coupon cannot be applied." });
+      }
+    } finally {
+      setCouponLoading(false);
+    }
+  };
+
+  const handlePointsChange = (event) => {
+    const nextPoints = Math.min(Math.max(Number(event.target.value) || 0, 0), wallet.points);
+    setPointsToUse(nextPoints);
   };
 
   const handlePlaceOrder = async (values) => {
@@ -66,7 +133,9 @@ const CheckoutPage = () => {
         quantity: item.quantity,
         image: item.image,
       })),
-      totalAmount: getSubtotal(),
+      totalAmount: getPayableTotal(),
+      couponCode: appliedCoupon?.code || "",
+      pointsUsed: Number(pointsToUse) || 0,
       paymentMethod: paymentMethod,
       paymentStatus: "Pending", // Will be marked "Paid" if MoMo/VNPay succeeds
     };
@@ -282,17 +351,86 @@ const CheckoutPage = () => {
             </div>
 
             <div className="border-t border-stone-100 pt-4 space-y-2 text-sm font-semibold">
+              <div className="rounded-md border border-emerald-100 bg-emerald-50/40 p-3 space-y-3">
+                <div className="flex items-center gap-2 text-sm font-black text-emerald-900">
+                  <GiftOutlined />
+                  <span>Coupon and reward points</span>
+                </div>
+                <div className="flex gap-2">
+                  <Input
+                    value={couponCode}
+                    onChange={(event) => setCouponCode(event.target.value)}
+                    placeholder="RUN10, SHOE200, FREESHIP"
+                    className="font-bold uppercase"
+                  />
+                  <Button loading={couponLoading} onClick={() => handleApplyCoupon()}>
+                    Apply
+                  </Button>
+                </div>
+                {coupons.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {coupons.slice(0, 4).map((coupon) => (
+                      <button
+                        type="button"
+                        key={coupon.code}
+                        onClick={() => handleApplyCoupon(coupon.code)}
+                        className="rounded border border-emerald-200 bg-white px-2 py-1 text-xs font-bold text-emerald-800 hover:border-emerald-700"
+                      >
+                        {coupon.code}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {appliedCoupon && (
+                  <Alert
+                    type="success"
+                    showIcon
+                    message={`${appliedCoupon.code} applied`}
+                    description={`Discount: ${formatCurrency(couponDiscount)}`}
+                  />
+                )}
+                <div className="rounded border border-stone-200 bg-white p-3">
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <span className="inline-flex items-center gap-2 font-bold text-stone-800"><WalletOutlined /> Points wallet</span>
+                    <Tag color="green">{wallet.points} points</Tag>
+                  </div>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={wallet.points}
+                    value={pointsToUse}
+                    onChange={handlePointsChange}
+                    placeholder="Points to use"
+                  />
+                  <p className="mt-2 text-xs font-semibold text-stone-500">
+                    1 point = {formatCurrency(wallet.pointValue)}. Discount: {formatCurrency(getPointsDiscount())}
+                  </p>
+                </div>
+              </div>
+
               <div className="flex justify-between text-stone-500">
                 <span>Tạm tính</span>
                 <span className="text-stone-950 font-bold">{formatCurrency(getSubtotal())}</span>
               </div>
+              {couponDiscount > 0 && (
+                <div className="flex justify-between text-emerald-700">
+                  <span>Coupon</span>
+                  <span className="font-bold">-{formatCurrency(couponDiscount)}</span>
+                </div>
+              )}
+              {getPointsDiscount() > 0 && (
+                <div className="flex justify-between text-emerald-700">
+                  <span>Reward points</span>
+                  <span className="font-bold">-{formatCurrency(getPointsDiscount())}</span>
+                </div>
+              )}
               <div className="flex justify-between text-stone-500">
                 <span>Vận chuyển</span>
                 <span className="text-emerald-700 font-bold">Miễn phí</span>
               </div>
               <div className="border-t border-stone-100 pt-3 flex justify-between text-base font-black text-stone-950">
                 <span>Tổng số tiền</span>
-                <span className="text-lg text-emerald-800">{formatCurrency(getSubtotal())}</span>
+                <span className="text-lg text-emerald-800">{formatCurrency(getPayableTotal())}</span>
               </div>
             </div>
 
@@ -356,7 +494,7 @@ const CheckoutPage = () => {
             </div>
             <div className="flex justify-between mt-1">
               <span>Số tiền:</span>
-              <span className="text-[#a21c6e]">{formatCurrency(getSubtotal())}</span>
+              <span className="text-[#a21c6e]">{formatCurrency(getPayableTotal())}</span>
             </div>
           </div>
 
@@ -389,7 +527,7 @@ const CheckoutPage = () => {
         <div className="p-6 space-y-5">
           <div className="text-center">
             <p className="text-xs text-stone-500 font-bold uppercase">Số tiền thanh toán</p>
-            <p className="text-2xl font-black text-[#005baa] mt-1">{formatCurrency(getSubtotal())}</p>
+            <p className="text-2xl font-black text-[#005baa] mt-1">{formatCurrency(getPayableTotal())}</p>
           </div>
 
           <div className="rounded border border-stone-200 bg-stone-50/50 p-4 space-y-4">

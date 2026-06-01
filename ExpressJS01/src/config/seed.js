@@ -1,5 +1,5 @@
-const Category = require("../models/category");
-const Product = require("../models/product");
+const categoryRepository = require("../repositories/categoryRepository");
+const productRepository = require("../repositories/productRepository");
 
 const categories = [
     { id: "road", name: "Road running", description: "Cushioned and durable shoes for city roads." },
@@ -379,17 +379,17 @@ const products = [
 
 const seedData = async () => {
     try {
-        const categoryCount = await Category.countDocuments();
+        const categoryCount = await categoryRepository.countAll();
         if (categoryCount === 0) {
             console.log("Seeding categories...");
-            await Category.insertMany(categories);
+            await categoryRepository.insertMany(categories);
             console.log("Categories seeded successfully.");
         }
 
-        const productCount = await Product.countDocuments();
+        const productCount = await productRepository.countAll();
         if (productCount === 0) {
             console.log("Seeding products...");
-            await Product.insertMany(products);
+            await productRepository.insertMany(products);
             console.log("Products seeded successfully.");
         }
     } catch (error) {

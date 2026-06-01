@@ -48,7 +48,7 @@ const getProductRanking = async (req, res) => {
 
 const getProductDetail = async (req, res) => {
     try {
-        const data = await getProductDetailService(req.params.slug);
+        const data = await getProductDetailService(req.params.slug, req.user.email);
         return res.status(data.EC === 0 ? 200 : 404).json(data);
     } catch (error) {
         console.error(">>> Error at getProductDetail controller:", error);

@@ -15,6 +15,20 @@ const {
     getProductDetail,
 } = require("../controllers/productController");
 const {
+    getFavorites,
+    getViewedProducts,
+    toggleFavorite,
+} = require("../controllers/productEngagementController");
+const {
+    createProductReview,
+    getProductReviews,
+} = require("../controllers/reviewController");
+const {
+    getCoupons,
+    getWallet,
+    validateCoupon,
+} = require("../controllers/couponController");
+const {
     getCart,
     addToCart,
     updateCartItem,
@@ -45,8 +59,16 @@ routerAPI.get("/account", getAccount);
 routerAPI.get("/products", getProducts);
 routerAPI.get("/products/by-category", getProductsByCategory);
 routerAPI.get("/products/ranking", getProductRanking);
+routerAPI.get("/products/:slug/reviews", getProductReviews);
+routerAPI.post("/products/:slug/reviews", createProductReview);
+routerAPI.post("/products/:slug/favorite", toggleFavorite);
 routerAPI.get("/products/:slug", getProductDetail);
 routerAPI.get("/categories", getProductCategories);
+routerAPI.get("/favorites", getFavorites);
+routerAPI.get("/viewed-products", getViewedProducts);
+routerAPI.get("/coupons", getCoupons);
+routerAPI.post("/coupons/validate", validateCoupon);
+routerAPI.get("/wallet", getWallet);
 
 // Cart Routes
 routerAPI.get("/cart", getCart);
