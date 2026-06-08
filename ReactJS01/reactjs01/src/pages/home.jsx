@@ -274,6 +274,9 @@ const HomePage = () => {
   const newestProducts = useMemo(() => products.filter((product) => product.isNew).slice(0, 3), [products]);
   const updateFilter = (name, value) => setFilters((prev) => ({ ...prev, [name]: value }));
   const loadedCategoryProductCount = countLoadedProducts(categoryGroups);
+  const isFilterActive = useMemo(() => {
+    return Object.keys(filters).some((key) => filters[key] !== initialFilters[key]);
+  }, [filters]);
 
   if (!auth.isAuthenticated) {
     return (
@@ -354,70 +357,88 @@ const HomePage = () => {
       </section>
 
       {loading ? <div className="grid min-h-80 place-items-center"><Spin /></div> : (
-        <>
-          <ProductLane title="Favorite products" icon={<StarFilled className="text-rose-600" />} products={favoriteProducts.slice(0, 3)} />
-          <ProductLane title="Recently viewed" icon={<EyeOutlined className="text-emerald-700" />} products={viewedProducts.slice(0, 3)} />
-          <ProductLane title="Deals" icon={<StarFilled className="text-rose-600" />} products={promoProducts} />
-          <ProductLane title="New arrivals" icon={<ShoppingCartOutlined className="text-sky-600" />} products={newestProducts} />
-          <RankingLane type="best-seller" title="Top 10 best sellers" icon={<StarFilled className="text-amber-500" />} />
-          <RankingLane type="most-viewed" title="Top 10 most viewed" icon={<EyeOutlined className="text-emerald-700" />} />
+        isFilterActive ? (
           <section className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-2xl font-black text-stone-950">All products by category</h2>
-                <p className="mt-1 text-sm font-semibold text-stone-500">
-                  Lazy loading is active: loaded {loadedCategoryProductCount} of {categoryPagination.total} products,
-                  page {categoryPagination.page} of {categoryPagination.totalPages}
-                </p>
-              </div>
+            <div className="mb-6 border-b border-stone-200 pb-3">
+              <h2 className="text-2xl font-black text-stone-950">Search Results ({products.length} products found)</h2>
             </div>
-            {categoryGroups.length > 0 ? (
-              <div className="space-y-8">
-                {categoryGroups.map((category) => (
-                  <div key={category.id}>
-                    <div className="mb-3 flex flex-wrap items-end justify-between gap-3 border-b border-stone-200 pb-2">
-                      <div>
-                        <h3 className="text-xl font-black text-stone-950">{category.name}</h3>
-                        <p className="text-sm text-stone-500">{category.description}</p>
-                      </div>
-                      <p className="text-sm font-bold text-emerald-700">{category.products.length} loaded</p>
-                    </div>
-                    <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-                      {category.products.map((product) => <ProductCard key={product.id} product={product} />)}
-                    </div>
-                  </div>
-                ))}
-                <div ref={loadMoreRef} className="grid min-h-24 place-items-center rounded-md border border-dashed border-emerald-300 bg-emerald-50/70 p-6 text-center text-sm font-bold text-emerald-800">
-                  {categoryLoading ? (
-                    <div className="flex items-center gap-3">
-                      <Spin />
-                      <span>Loading next page...</span>
-                    </div>
-                  ) : categoryPagination.hasMore ? (
-                    <button
-                      type="button"
-                      onClick={loadNextCategoryPage}
-                      className="rounded-md bg-emerald-700 px-5 py-3 text-sm font-black text-white hover:bg-emerald-800"
-                    >
-                      Load more products
-                    </button>
-                  ) : (
-                    <span>All products loaded</span>
-                  )}
-                </div>
+            {products.length > 0 ? (
+              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+                {products.map((product) => <ProductCard key={product.id} product={product} />)}
               </div>
             ) : (
               <div className="rounded-md border border-dashed border-stone-300 bg-white p-10 text-center">
-                {categoryLoading ? <Spin /> : (
-                  <>
-                    <p className="text-lg font-bold text-stone-900">No matching products</p>
-                    <p className="mt-2 text-sm text-stone-500">Try another keyword or remove some filters.</p>
-                  </>
-                )}
+                <p className="text-lg font-bold text-stone-900">No matching products</p>
+                <p className="mt-2 text-sm text-stone-500">Try another keyword or remove some filters.</p>
               </div>
             )}
           </section>
-        </>
+        ) : (
+          <>
+            <ProductLane title="Favorite products" icon={<StarFilled className="text-rose-600" />} products={favoriteProducts.slice(0, 3)} />
+            <ProductLane title="Recently viewed" icon={<EyeOutlined className="text-emerald-700" />} products={viewedProducts.slice(0, 3)} />
+            <ProductLane title="Deals" icon={<StarFilled className="text-rose-600" />} products={promoProducts} />
+            <ProductLane title="New arrivals" icon={<ShoppingCartOutlined className="text-sky-600" />} products={newestProducts} />
+            <RankingLane type="best-seller" title="Top 10 best sellers" icon={<StarFilled className="text-amber-500" />} />
+            <RankingLane type="most-viewed" title="Top 10 most viewed" icon={<EyeOutlined className="text-emerald-700" />} />
+            <section className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-2xl font-black text-stone-950">All products by category</h2>
+                  <p className="mt-1 text-sm font-semibold text-stone-500">
+                    Lazy loading is active: loaded {loadedCategoryProductCount} of {categoryPagination.total} products,
+                    page {categoryPagination.page} of {categoryPagination.totalPages}
+                  </p>
+                </div>
+              </div>
+              {categoryGroups.length > 0 ? (
+                <div className="space-y-8">
+                  {categoryGroups.map((category) => (
+                    <div key={category.id}>
+                      <div className="mb-3 flex flex-wrap items-end justify-between gap-3 border-b border-stone-200 pb-2">
+                        <div>
+                          <h3 className="text-xl font-black text-stone-950">{category.name}</h3>
+                          <p className="text-sm text-stone-500">{category.description}</p>
+                        </div>
+                        <p className="text-sm font-bold text-emerald-700">{category.products.length} loaded</p>
+                      </div>
+                      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+                        {category.products.map((product) => <ProductCard key={product.id} product={product} />)}
+                      </div>
+                    </div>
+                  ))}
+                  <div ref={loadMoreRef} className="grid min-h-24 place-items-center rounded-md border border-dashed border-emerald-300 bg-emerald-50/70 p-6 text-center text-sm font-bold text-emerald-800">
+                    {categoryLoading ? (
+                      <div className="flex items-center gap-3">
+                        <Spin />
+                        <span>Loading next page...</span>
+                      </div>
+                    ) : categoryPagination.hasMore ? (
+                      <button
+                        type="button"
+                        onClick={loadNextCategoryPage}
+                        className="rounded-md bg-emerald-700 px-5 py-3 text-sm font-black text-white hover:bg-emerald-800"
+                      >
+                        Load more products
+                      </button>
+                    ) : (
+                      <span>All products loaded</span>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-md border border-dashed border-stone-300 bg-white p-10 text-center">
+                  {categoryLoading ? <Spin /> : (
+                    <>
+                      <p className="text-lg font-bold text-stone-900">No matching products</p>
+                      <p className="mt-2 text-sm text-stone-500">Try another keyword or remove some filters.</p>
+                    </>
+                  )}
+                </div>
+              )}
+            </section>
+          </>
+        )
       )}
     </div>
   );

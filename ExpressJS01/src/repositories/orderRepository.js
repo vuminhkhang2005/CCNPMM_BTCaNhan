@@ -11,7 +11,7 @@ const findById = (id) => Order.findById(id);
 const getReviewableProductOrderQuery = ({ userId, productId, orderId }) => {
     const query = {
         userId,
-        status: { $ne: 6 },
+        status: 9,
         cancelRequested: { $ne: true },
         "items.productId": Number(productId),
     };
@@ -31,7 +31,7 @@ const findReviewableOrdersWithProduct = (params) => Order
 
 const countBuyersByProductId = async (productId) => {
     const buyers = await Order.distinct("userId", {
-        status: { $ne: 6 },
+        status: 9,
         cancelRequested: { $ne: true },
         "items.productId": Number(productId),
     });

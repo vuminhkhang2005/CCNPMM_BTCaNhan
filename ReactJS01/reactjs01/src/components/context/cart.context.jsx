@@ -55,22 +55,22 @@ export const CartWrapper = ({ children }) => {
       if (res && res.EC === 0) {
         setCart(res.cart);
         notification.success({
-          message: "Giỏ hàng",
-          description: `Đã thêm ${item.quantity} x ${item.name} vào giỏ hàng thành công!`,
+          message: "Cart",
+          description: `Successfully added ${item.quantity} x ${item.name} to cart!`,
         });
         return true;
       } else {
         notification.error({
-          message: "Giỏ hàng",
-          description: res?.EM || "Không thể thêm vào giỏ hàng.",
+          message: "Cart",
+          description: res?.EM || "Could not add to cart.",
         });
         return false;
       }
     } catch (error) {
       console.error(">>> Error adding to cart:", error);
       notification.error({
-        message: "Giỏ hàng",
-        description: "Lỗi hệ thống khi thêm vào giỏ hàng.",
+        message: "Cart",
+        description: "System error occurred while adding to cart.",
       });
       return false;
     }
@@ -96,8 +96,8 @@ export const CartWrapper = ({ children }) => {
       if (res && res.EC === 0) {
         setCart(res.cart);
         notification.success({
-          message: "Giỏ hàng",
-          description: "Đã xóa sản phẩm khỏi giỏ hàng.",
+          message: "Cart",
+          description: "Removed item from cart.",
         });
         return true;
       }

@@ -11,6 +11,151 @@ const serviceResponse = (statusCode, data) => ({ statusCode, data });
 
 const getMockUser = (email) => global.mockUsers?.find((user) => user.email === email);
 
+const ORDER_STATUS = Object.freeze({
+    NEW: 1,
+    CONFIRMED: 2,
+    PREPARING: 3,
+    DELIVERING: 4,
+    DELIVERED: 5,
+    CANCELLED: 6,
+    RETURN_PROCESSING: 7,
+    RETURNED: 8,
+    RECEIVED: 9,
+});
+
+const ORDER_STATUS_LABELS = Object.freeze({
+    [ORDER_STATUS.NEW]: "New order",
+    [ORDER_STATUS.CONFIRMED]: "Confirmed",
+    [ORDER_STATUS.PREPARING]: "Preparing",
+    [ORDER_STATUS.DELIVERING]: "Delivering",
+    [ORDER_STATUS.DELIVERED]: "Delivered",
+    [ORDER_STATUS.CANCELLED]: "Cancelled",
+    [ORDER_STATUS.RETURN_PROCESSING]: "Return processing",
+    [ORDER_STATUS.RETURNED]: "Returned",
+    [ORDER_STATUS.RECEIVED]: "Received",
+});
+
+const STATUS_TRANSITIONS = Object.freeze({
+    [ORDER_STATUS.NEW]: [ORDER_STATUS.CONFIRMED, ORDER_STATUS.CANCELLED],
+    [ORDER_STATUS.CONFIRMED]: [ORDER_STATUS.PREPARING, ORDER_STATUS.CANCELLED],
+    [ORDER_STATUS.PREPARING]: [ORDER_STATUS.DELIVERING, ORDER_STATUS.CANCELLED],
+    [ORDER_STATUS.DELIVERING]: [ORDER_STATUS.DELIVERED],
+    [ORDER_STATUS.DELIVERED]: [ORDER_STATUS.RECEIVED, ORDER_STATUS.RETURN_PROCESSING],
+    [ORDER_STATUS.CANCELLED]: [],
+    [ORDER_STATUS.RETURN_PROCESSING]: [ORDER_STATUS.RETURNED],
+    [ORDER_STATUS.RETURNED]: [],
+    [ORDER_STATUS.RECEIVED]: [],
+});
+
+const CANCEL_ACTIONS = Object.freeze({
+    APPROVE: "approve-cancel",
+    REJECT: "reject-cancel",
+});
+
+const getStatusName = (status) => ORDER_STATUS_LABELS[Number(status)] || "Unknown";
+
+const normalizeNote = (value) => String(value || "").trim();
+
+const getAdminUpdateNote = (updateData = {}) => normalizeNote(
+    updateData.note || updateData.adminNote || updateData.reason,
+);
+
+const appendStatusHistory = (order, historyItem) => {
+    if (!Array.isArray(order.statusHistory)) {
+        order.statusHistory = [];
+    }
+
+    order.statusHistory.push({
+        ...historyItem,
+        createdAt: new Date(),
+    });
+};
+
+const serviceError = (statusCode, EC, EM) => ({ statusCode, data: { EC, EM } });
+
+const applyAdminOrderFlowUpdate = (order, updateData = {}, actorEmail = "") => {
+    const requestedAction = updateData.action || (updateData.status !== undefined ? "update-status" : "");
+    const note = getAdminUpdateNote(updateData);
+
+    if (!note) {
+        return serviceError(400, 5, "A submit note is required to update order flow");
+    }
+
+    if (requestedAction === CANCEL_ACTIONS.APPROVE || requestedAction === CANCEL_ACTIONS.REJECT) {
+        if (!order.cancelRequested) {
+            return serviceError(400, 6, "This order does not have a pending cancellation request");
+        }
+
+        const currentStatus = Number(order.status);
+        order.cancelRequested = false;
+        order.cancelResolution = requestedAction === CANCEL_ACTIONS.APPROVE ? "APPROVED" : "REJECTED";
+        order.cancelResolutionNote = note;
+        order.cancelResolvedBy = actorEmail;
+        order.cancelResolvedAt = new Date();
+
+        if (requestedAction === CANCEL_ACTIONS.APPROVE) {
+            order.status = ORDER_STATUS.CANCELLED;
+        }
+
+        appendStatusHistory(order, {
+            action: requestedAction,
+            fromStatus: currentStatus,
+            toStatus: Number(order.status),
+            note,
+            actorEmail,
+        });
+
+        return null;
+    }
+
+    if (order.cancelRequested) {
+        return serviceError(409, 7, "Resolve the pending cancellation request before changing order status");
+    }
+
+    if (updateData.status === undefined) {
+        return serviceError(400, 3, "Missing update details");
+    }
+
+    const nextStatus = Number(updateData.status);
+    const currentStatus = Number(order.status);
+    const allowedNextStatuses = STATUS_TRANSITIONS[currentStatus] || [];
+
+    if (!Object.values(ORDER_STATUS).includes(nextStatus)) {
+        return serviceError(400, 4, "Invalid order status");
+    }
+
+    if (!allowedNextStatuses.includes(nextStatus)) {
+        const allowedText = allowedNextStatuses.map(getStatusName).join(", ") || "no further status";
+        return serviceError(400, 8, `Invalid order flow. Allowed next status: ${allowedText}`);
+    }
+
+    order.status = nextStatus;
+
+    if (nextStatus === ORDER_STATUS.DELIVERED) {
+        order.paymentStatus = "Paid";
+    }
+
+    if (nextStatus === ORDER_STATUS.CANCELLED) {
+        order.cancelRequested = false;
+        order.cancelReason = note;
+    }
+
+    if (nextStatus === ORDER_STATUS.RETURNED) {
+        order.returnResolvedBy = actorEmail;
+        order.returnResolvedAt = new Date();
+    }
+
+    appendStatusHistory(order, {
+        action: requestedAction === "cancel-order" ? "cancel-order" : "update-status",
+        fromStatus: currentStatus,
+        toStatus: nextStatus,
+        note,
+        actorEmail,
+    });
+
+    return null;
+};
+
 const getOrderSubtotal = (items = []) => items.reduce((sum, item) => (
     sum + Number(item.price || 0) * Number(item.quantity || 0)
 ), 0);
@@ -116,6 +261,13 @@ const createOrderService = async (email, orderData) => {
                 paymentStatus: paymentStatus || "Pending",
                 status: 1,
                 cancelRequested: false,
+                statusHistory: [{
+                    action: "create-order",
+                    toStatus: ORDER_STATUS.NEW,
+                    note: "Order created",
+                    actorEmail: email,
+                    createdAt: new Date(),
+                }],
                 createdAt: new Date(),
                 updatedAt: new Date(),
             };
@@ -168,6 +320,12 @@ const createOrderService = async (email, orderData) => {
             paymentMethod,
             paymentStatus: paymentStatus || "Pending",
             status: 1,
+            statusHistory: [{
+                action: "create-order",
+                toStatus: ORDER_STATUS.NEW,
+                note: "Order created",
+                actorEmail: email,
+            }],
         });
         if (pricing.pointsUsed > 0) {
             user.points = Number(user.points || 0) - pricing.pointsUsed;
@@ -338,6 +496,17 @@ const cancelOrderService = async (id, email, reason) => {
             if (order.status === 3) {
                 order.cancelRequested = true;
                 order.cancelReason = reason || "Customer requested cancellation";
+                order.cancelResolution = "";
+                order.cancelResolutionNote = "";
+                order.cancelResolvedBy = "";
+                order.cancelResolvedAt = undefined;
+                appendStatusHistory(order, {
+                    action: "request-cancel",
+                    fromStatus: Number(order.status),
+                    toStatus: Number(order.status),
+                    note: order.cancelReason,
+                    actorEmail: email,
+                });
                 order.updatedAt = new Date();
                 return serviceResponse(200, {
                     EC: 0,
@@ -347,8 +516,17 @@ const cancelOrderService = async (id, email, reason) => {
             }
 
             if ((order.status === 1 || order.status === 2) && timeDiffMs < thirtyMinsMs) {
+                const currentStatus = Number(order.status);
                 order.status = 6;
                 order.cancelReason = reason || "Customer cancelled order";
+                order.cancelRequested = false;
+                appendStatusHistory(order, {
+                    action: "customer-cancel",
+                    fromStatus: currentStatus,
+                    toStatus: ORDER_STATUS.CANCELLED,
+                    note: order.cancelReason,
+                    actorEmail: email,
+                });
                 order.updatedAt = new Date();
                 return serviceResponse(200, {
                     EC: 0,
@@ -383,6 +561,17 @@ const cancelOrderService = async (id, email, reason) => {
         if (order.status === 3) {
             order.cancelRequested = true;
             order.cancelReason = reason || "Customer requested cancellation";
+            order.cancelResolution = "";
+            order.cancelResolutionNote = "";
+            order.cancelResolvedBy = "";
+            order.cancelResolvedAt = undefined;
+            appendStatusHistory(order, {
+                action: "request-cancel",
+                fromStatus: Number(order.status),
+                toStatus: Number(order.status),
+                note: order.cancelReason,
+                actorEmail: email,
+            });
             await orderRepository.save(order);
             return serviceResponse(200, {
                 EC: 0,
@@ -392,8 +581,17 @@ const cancelOrderService = async (id, email, reason) => {
         }
 
         if ((order.status === 1 || order.status === 2) && timeDiffMs < thirtyMinsMs) {
+            const currentStatus = Number(order.status);
             order.status = 6;
             order.cancelReason = reason || "Customer cancelled order";
+            order.cancelRequested = false;
+            appendStatusHistory(order, {
+                action: "customer-cancel",
+                fromStatus: currentStatus,
+                toStatus: ORDER_STATUS.CANCELLED,
+                note: order.cancelReason,
+                actorEmail: email,
+            });
             await orderRepository.save(order);
             return serviceResponse(200, {
                 EC: 0,
@@ -412,10 +610,95 @@ const cancelOrderService = async (id, email, reason) => {
     }
 };
 
+const requestReturnOrderService = async (id, email, reason) => {
+    try {
+        const returnReason = normalizeNote(reason) || "Customer requested return";
+
+        if (!global.dbConnected) {
+            const order = global.mockOrders.find((item) => item._id === id);
+            if (!order) {
+                return serviceResponse(404, { EC: 2, EM: "Order not found (Memory Fallback)" });
+            }
+
+            if (order.userEmail !== email) {
+                return serviceResponse(403, { EC: 3, EM: "Unauthorized to request return for this order (Memory Fallback)" });
+            }
+
+            if (Number(order.status) !== ORDER_STATUS.DELIVERED) {
+                return serviceResponse(400, {
+                    EC: 4,
+                    EM: "Return request can only be created after the order has been delivered (Memory Fallback)",
+                });
+            }
+
+            order.status = ORDER_STATUS.RETURN_PROCESSING;
+            order.returnReason = returnReason;
+            order.returnRequestedAt = new Date();
+            order.updatedAt = new Date();
+
+            appendStatusHistory(order, {
+                action: "request-return",
+                fromStatus: ORDER_STATUS.DELIVERED,
+                toStatus: ORDER_STATUS.RETURN_PROCESSING,
+                note: returnReason,
+                actorEmail: email,
+            });
+
+            return serviceResponse(200, {
+                EC: 0,
+                EM: "Return request sent to the shop successfully (Memory Fallback)",
+                order,
+            });
+        }
+
+        const user = await userRepository.findByEmail(email);
+        if (!user) {
+            return serviceResponse(404, { EC: 1, EM: "User not found" });
+        }
+
+        const order = await orderRepository.findById(id);
+        if (!order) {
+            return serviceResponse(404, { EC: 2, EM: "Order not found" });
+        }
+
+        if (order.userId.toString() !== user._id.toString()) {
+            return serviceResponse(403, { EC: 3, EM: "Unauthorized to request return for this order" });
+        }
+
+        if (Number(order.status) !== ORDER_STATUS.DELIVERED) {
+            return serviceResponse(400, {
+                EC: 4,
+                EM: "Return request can only be created after the order has been delivered",
+            });
+        }
+
+        order.status = ORDER_STATUS.RETURN_PROCESSING;
+        order.returnReason = returnReason;
+        order.returnRequestedAt = new Date();
+
+        appendStatusHistory(order, {
+            action: "request-return",
+            fromStatus: ORDER_STATUS.DELIVERED,
+            toStatus: ORDER_STATUS.RETURN_PROCESSING,
+            note: returnReason,
+            actorEmail: email,
+        });
+
+        await orderRepository.save(order);
+
+        return serviceResponse(200, {
+            EC: 0,
+            EM: "Return request sent to the shop successfully",
+            order,
+        });
+    } catch (error) {
+        console.error(">>> Error at requestReturnOrderService:", error);
+        return serviceResponse(500, { EC: -1, EM: "System error" });
+    }
+};
+
 const updateOrderStatusService = async (id, email, role, updateData = {}) => {
     try {
-        const { status, action } = updateData;
-
         if (!global.dbConnected) {
             if (role !== "ADMIN") {
                 return serviceResponse(403, { EC: 1, EM: "Only administrators can perform this action (Memory Fallback)" });
@@ -426,23 +709,12 @@ const updateOrderStatusService = async (id, email, role, updateData = {}) => {
                 return serviceResponse(404, { EC: 2, EM: "Order not found (Memory Fallback)" });
             }
 
-            if (action === "approve-cancel") {
-                order.status = 6;
-                order.cancelRequested = false;
-            } else if (action === "reject-cancel") {
-                order.cancelRequested = false;
-            } else if (status !== undefined) {
-                const nextStatus = Number(status);
-                if (Number.isNaN(nextStatus) || nextStatus < 1 || nextStatus > 6) {
-                    return serviceResponse(400, { EC: 4, EM: "Invalid order status (Memory Fallback)" });
-                }
-
-                order.status = nextStatus;
-                if (Number(status) === 5) {
-                    order.paymentStatus = "Paid";
-                }
-            } else {
-                return serviceResponse(400, { EC: 3, EM: "Missing update details (Memory Fallback)" });
+            const flowError = applyAdminOrderFlowUpdate(order, updateData, email);
+            if (flowError) {
+                return serviceResponse(flowError.statusCode, {
+                    ...flowError.data,
+                    EM: `${flowError.data.EM} (Memory Fallback)`,
+                });
             }
 
             order.updatedAt = new Date();
@@ -464,23 +736,9 @@ const updateOrderStatusService = async (id, email, role, updateData = {}) => {
             return serviceResponse(404, { EC: 2, EM: "Order not found" });
         }
 
-        if (action === "approve-cancel") {
-            order.status = 6;
-            order.cancelRequested = false;
-        } else if (action === "reject-cancel") {
-            order.cancelRequested = false;
-        } else if (status !== undefined) {
-            const nextStatus = Number(status);
-            if (Number.isNaN(nextStatus) || nextStatus < 1 || nextStatus > 6) {
-                return serviceResponse(400, { EC: 4, EM: "Invalid order status" });
-            }
-
-            order.status = nextStatus;
-            if (Number(status) === 5) {
-                order.paymentStatus = "Paid";
-            }
-        } else {
-            return serviceResponse(400, { EC: 3, EM: "Missing update details" });
+        const flowError = applyAdminOrderFlowUpdate(order, updateData, email);
+        if (flowError) {
+            return serviceResponse(flowError.statusCode, flowError.data);
         }
 
         await orderRepository.save(order);
@@ -496,10 +754,93 @@ const updateOrderStatusService = async (id, email, role, updateData = {}) => {
     }
 };
 
+const receiveOrderService = async (id, email) => {
+    try {
+        if (!global.dbConnected) {
+            const order = global.mockOrders.find((item) => item._id === id);
+            if (!order) {
+                return serviceResponse(404, { EC: 2, EM: "Order not found (Memory Fallback)" });
+            }
+
+            if (order.userEmail !== email) {
+                return serviceResponse(403, { EC: 3, EM: "Unauthorized to confirm receipt for this order (Memory Fallback)" });
+            }
+
+            if (Number(order.status) !== ORDER_STATUS.DELIVERED) {
+                return serviceResponse(400, {
+                    EC: 4,
+                    EM: "Order can only be confirmed as received after it has been delivered (Memory Fallback)",
+                });
+            }
+
+            order.status = ORDER_STATUS.RECEIVED;
+            order.updatedAt = new Date();
+
+            appendStatusHistory(order, {
+                action: "confirm-receive",
+                fromStatus: ORDER_STATUS.DELIVERED,
+                toStatus: ORDER_STATUS.RECEIVED,
+                note: "Customer confirmed receipt",
+                actorEmail: email,
+            });
+
+            return serviceResponse(200, {
+                EC: 0,
+                EM: "Order receipt confirmed successfully (Memory Fallback)",
+                order,
+            });
+        }
+
+        const user = await userRepository.findByEmail(email);
+        if (!user) {
+            return serviceResponse(404, { EC: 1, EM: "User not found" });
+        }
+
+        const order = await orderRepository.findById(id);
+        if (!order) {
+            return serviceResponse(404, { EC: 2, EM: "Order not found" });
+        }
+
+        if (order.userId.toString() !== user._id.toString()) {
+            return serviceResponse(403, { EC: 3, EM: "Unauthorized to confirm receipt for this order" });
+        }
+
+        if (Number(order.status) !== ORDER_STATUS.DELIVERED) {
+            return serviceResponse(400, {
+                EC: 4,
+                EM: "Order can only be confirmed as received after it has been delivered",
+            });
+        }
+
+        order.status = ORDER_STATUS.RECEIVED;
+
+        appendStatusHistory(order, {
+            action: "confirm-receive",
+            fromStatus: ORDER_STATUS.DELIVERED,
+            toStatus: ORDER_STATUS.RECEIVED,
+            note: "Customer confirmed receipt",
+            actorEmail: email,
+        });
+
+        await orderRepository.save(order);
+
+        return serviceResponse(200, {
+            EC: 0,
+            EM: "Order receipt confirmed successfully",
+            order,
+        });
+    } catch (error) {
+        console.error(">>> Error at receiveOrderService:", error);
+        return serviceResponse(500, { EC: -1, EM: "System error" });
+    }
+};
+
 module.exports = {
     createOrderService,
     getOrdersService,
     getOrderByIdService,
     cancelOrderService,
+    requestReturnOrderService,
     updateOrderStatusService,
+    receiveOrderService,
 };

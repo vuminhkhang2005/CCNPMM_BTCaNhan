@@ -20,6 +20,9 @@ const LoginPage = () => {
           email: res?.user?.email ?? "",
           name: res?.user?.name ?? "",
           role: res?.user?.role ?? "",
+          phone: res?.user?.phone ?? "",
+          address: res?.user?.address ?? "",
+          isActive: res?.user?.isActive !== false,
         },
       });
       notification.success({ message: "Login", description: "Login successful!" });

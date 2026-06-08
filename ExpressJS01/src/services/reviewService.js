@@ -22,7 +22,7 @@ const findMockReviewableOrderItem = ({ email, slug, orderId }) => {
         const matchesOrder = !orderId || item._id === orderId;
         return matchesOrder
             && item.userEmail === email
-            && item.status !== 6
+            && Number(item.status) === 9
             && !item.cancelRequested
             && item.items?.some((orderItem) => orderItem.slug === slug);
     });

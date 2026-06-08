@@ -164,8 +164,8 @@ const ProductDetailPage = () => {
   const handleAddToCart = async () => {
     if (!selectedColor || !selectedSize) {
       notification.warning({
-        message: "Lựa chọn sản phẩm",
-        description: "Vui lòng chọn màu sắc và kích cỡ giày.",
+        message: "Product Selection",
+        description: "Please select shoe color and size.",
       });
       return;
     }
@@ -384,7 +384,7 @@ const ProductDetailPage = () => {
               type="info"
               showIcon
               message="Review locked"
-              description="You need a successful, non-cancelled order containing this product, and each purchased item can be reviewed once."
+              description="You need to have marked the order containing this product as 'Received' in your history. Each purchased item can only be reviewed once."
             />
           )}
         </aside>

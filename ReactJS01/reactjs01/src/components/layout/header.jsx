@@ -1,6 +1,6 @@
 import { useContext } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { HomeOutlined, LoginOutlined, LogoutOutlined, UserOutlined, UsergroupAddOutlined, ShoppingCartOutlined, HistoryOutlined, DashboardOutlined } from "@ant-design/icons";
+import { HomeOutlined, LoginOutlined, LogoutOutlined, UserOutlined, UsergroupAddOutlined, ShoppingCartOutlined, HistoryOutlined, DashboardOutlined, IdcardOutlined } from "@ant-design/icons";
 import { AuthContext } from "../context/auth";
 import { CartContext } from "../context/cart.context";
 import { Badge } from "antd";
@@ -13,7 +13,7 @@ const Header = () => {
 
   const handleLogout = () => {
     localStorage.removeItem("access_token");
-    setAuth({ isAuthenticated: false, user: { email: "", name: "", role: "" } });
+    setAuth({ isAuthenticated: false, user: { email: "", name: "", role: "", phone: "", address: "", isActive: true } });
     navigate("/");
   };
 
@@ -36,15 +36,20 @@ const Header = () => {
           </Link>
           {auth.isAuthenticated && (
             <>
-              <Link to="/user" className={`inline-flex items-center gap-2 rounded-md px-3 py-2 ${isActive("/user") ? "bg-emerald-50 text-emerald-800" : "text-stone-600 hover:bg-stone-100"}`}>
-                <UsergroupAddOutlined /> Users
+              {auth.user.role === "ADMIN" && (
+                <Link to="/user" className={`inline-flex items-center gap-2 rounded-md px-3 py-2 ${isActive("/user") ? "bg-emerald-50 text-emerald-800" : "text-stone-600 hover:bg-stone-100"}`}>
+                  <UsergroupAddOutlined /> Users
+                </Link>
+              )}
+              <Link to="/profile" className={`inline-flex items-center gap-2 rounded-md px-3 py-2 ${isActive("/profile") ? "bg-emerald-50 text-emerald-800" : "text-stone-600 hover:bg-stone-100"}`}>
+                <IdcardOutlined /> Profile
               </Link>
               <Link to="/orders" className={`inline-flex items-center gap-2 rounded-md px-3 py-2 ${isActive("/orders") ? "bg-emerald-50 text-emerald-800" : "text-stone-600 hover:bg-stone-100"}`}>
-                <HistoryOutlined /> Lịch sử
+                <HistoryOutlined /> History
               </Link>
               {auth.user.role === "ADMIN" && (
                 <Link to="/admin/orders" className={`inline-flex items-center gap-2 rounded-md px-3 py-2 ${isActive("/admin/orders") ? "bg-emerald-50 text-emerald-800" : "text-stone-600 hover:bg-stone-100"}`}>
-                  <DashboardOutlined /> Quản lý đơn
+                  <DashboardOutlined /> Manage Orders
                 </Link>
               )}
             </>
@@ -57,7 +62,7 @@ const Header = () => {
               <Badge count={cartCount} size="small" offset={[5, -5]} color="#047857">
                 <ShoppingCartOutlined className="text-lg" />
               </Badge>
-              <span className="hidden sm:inline font-semibold">Giỏ hàng</span>
+              <span className="hidden sm:inline font-semibold">Cart</span>
             </Link>
           )}
 
@@ -86,4 +91,3 @@ const Header = () => {
 };
 
 export default Header;
-

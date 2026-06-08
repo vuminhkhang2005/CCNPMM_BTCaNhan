@@ -30,9 +30,27 @@ const orderSchema = new mongoose.Schema(
         totalAmount: { type: Number, required: true },
         paymentMethod: { type: String, default: "COD" }, // "COD", "MOMO", "VNPAY"
         paymentStatus: { type: String, default: "Pending" }, // "Pending", "Paid"
-        status: { type: Number, default: 1 }, // 1. New, 2. Confirmed, 3. Preparing, 4. Delivering, 5. Delivered, 6. Cancelled
+        status: { type: Number, default: 1 }, // 1. New, 2. Confirmed, 3. Preparing, 4. Delivering, 5. Delivered, 6. Cancelled, 7. Return processing, 8. Returned, 9. Received
         cancelRequested: { type: Boolean, default: false },
-        cancelReason: { type: String }
+        cancelReason: { type: String },
+        cancelResolution: { type: String },
+        cancelResolutionNote: { type: String },
+        cancelResolvedBy: { type: String },
+        cancelResolvedAt: { type: Date },
+        returnReason: { type: String },
+        returnRequestedAt: { type: Date },
+        returnResolvedBy: { type: String },
+        returnResolvedAt: { type: Date },
+        statusHistory: [
+            {
+                action: { type: String, required: true },
+                fromStatus: { type: Number },
+                toStatus: { type: Number },
+                note: { type: String },
+                actorEmail: { type: String },
+                createdAt: { type: Date, default: Date.now },
+            }
+        ]
     },
     { timestamps: true }
 );

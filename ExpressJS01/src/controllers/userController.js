@@ -2,6 +2,11 @@ const {
     createUserService,
     loginService,
     getUserService,
+    getAccountService,
+    createManagedUserService,
+    updateUserService,
+    setUserActiveService,
+    updateProfileService,
     forgotPasswordService,
     resetPasswordService,
 } = require("../services/userService");
@@ -24,7 +29,36 @@ const getUser = async (req, res) => {
 };
 
 const getAccount = async (req, res) => {
-    return res.status(200).json(req.user);
+    const data = await getAccountService(req.user.email);
+    if (data.EC !== 0) {
+        return res.status(data.EC === 2 ? 403 : 404).json(data);
+    }
+    return res.status(200).json({ EC: 0, ...data.user });
+};
+
+const createManagedUser = async (req, res) => {
+    const data = await createManagedUserService(req.body);
+    return res.status(data.EC === 0 ? 201 : 400).json(data);
+};
+
+const updateUser = async (req, res) => {
+    const data = await updateUserService(req.params.id, req.body, req.user.email);
+    return res.status(data.EC === 0 ? 200 : 400).json(data);
+};
+
+const deactivateUser = async (req, res) => {
+    const data = await setUserActiveService(req.params.id, false, req.user.email);
+    return res.status(data.EC === 0 ? 200 : 400).json(data);
+};
+
+const activateUser = async (req, res) => {
+    const data = await setUserActiveService(req.params.id, true, req.user.email);
+    return res.status(data.EC === 0 ? 200 : 400).json(data);
+};
+
+const updateProfile = async (req, res) => {
+    const data = await updateProfileService(req.user.email, req.body);
+    return res.status(data.EC === 0 ? 200 : 400).json(data);
 };
 
 const forgotPassword = async (req, res) => {
@@ -44,6 +78,11 @@ module.exports = {
     handleLogin,
     getUser,
     getAccount,
+    createManagedUser,
+    updateUser,
+    deactivateUser,
+    activateUser,
+    updateProfile,
     forgotPassword,
     resetPassword,
 };

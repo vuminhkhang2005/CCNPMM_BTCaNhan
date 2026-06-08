@@ -13,15 +13,21 @@ function App() {
       setAppLoading(true);
       try {
         const res = await getAccountApi();
-        if (res && !res.message) {
+        if (res && !res.message && res.EC !== 1 && res.EC !== 2) {
+          const user = res.user || res;
           setAuth({
             isAuthenticated: true,
             user: {
-              email: res.email,
-              name: res.name,
-              role: res.role,
+              email: user.email,
+              name: user.name,
+              role: user.role,
+              phone: user.phone || "",
+              address: user.address || "",
+              isActive: user.isActive !== false,
             },
           });
+        } else if (res?.EC === 2) {
+          localStorage.removeItem("access_token");
         }
       } finally {
         setAppLoading(false);

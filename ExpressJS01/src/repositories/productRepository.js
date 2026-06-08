@@ -3,12 +3,12 @@ const Product = require("../models/product");
 const buildMongoQuery = (query = {}) => {
     const mongoQuery = {};
 
-    const keyword = query.keyword ? query.keyword.trim().toLowerCase() : "";
+    const keyword = query.keyword ? query.keyword.trim() : "";
     if (keyword) {
         mongoQuery.$or = [
             { name: { $regex: keyword, $options: "i" } },
             { description: { $regex: keyword, $options: "i" } },
-            { tags: { $in: [new RegExp(keyword, "i")] } },
+            { tags: { $regex: keyword, $options: "i" } },
         ];
     }
 
@@ -16,16 +16,34 @@ const buildMongoQuery = (query = {}) => {
         mongoQuery.category = query.category.trim().toLowerCase();
     }
 
-    const minPrice = Number(query.minPrice) || 0;
-    const maxPrice = Number(query.maxPrice);
-    mongoQuery.price = { $gte: minPrice };
-    if (!isNaN(maxPrice)) {
-        mongoQuery.price.$lte = maxPrice;
+    const priceFilter = {};
+    let hasPriceFilter = false;
+
+    if (query.minPrice !== undefined && query.minPrice !== null && String(query.minPrice).trim() !== "") {
+        const minPrice = Number(query.minPrice);
+        if (!isNaN(minPrice)) {
+            priceFilter.$gte = minPrice;
+            hasPriceFilter = true;
+        }
     }
 
-    const minRating = Number(query.minRating);
-    if (!isNaN(minRating) && minRating > 0) {
-        mongoQuery.rating = { $gte: minRating };
+    if (query.maxPrice !== undefined && query.maxPrice !== null && String(query.maxPrice).trim() !== "") {
+        const maxPrice = Number(query.maxPrice);
+        if (!isNaN(maxPrice)) {
+            priceFilter.$lte = maxPrice;
+            hasPriceFilter = true;
+        }
+    }
+
+    if (hasPriceFilter) {
+        mongoQuery.price = priceFilter;
+    }
+
+    if (query.minRating !== undefined && query.minRating !== null && String(query.minRating).trim() !== "") {
+        const minRating = Number(query.minRating);
+        if (!isNaN(minRating) && minRating > 0) {
+            mongoQuery.rating = { $gte: minRating };
+        }
     }
 
     const stockStatus = query.stockStatus ? query.stockStatus.trim().toLowerCase() : "";

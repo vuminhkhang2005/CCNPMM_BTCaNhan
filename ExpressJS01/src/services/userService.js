@@ -9,23 +9,68 @@ const userRepository = require("../repositories/userRepository");
 const saltRounds = 10;
 let transporter = null;
 
+const USER_ROLES = Object.freeze(["USER", "ADMIN"]);
+
+const generateMockId = () => Array.from(
+    { length: 24 },
+    () => Math.floor(Math.random() * 16).toString(16),
+).join("");
+
+const sanitizeUser = (user) => {
+    if (!user) return null;
+    const source = typeof user.toObject === "function" ? user.toObject() : user;
+
+    return {
+        _id: source._id,
+        name: source.name,
+        email: source.email,
+        role: source.role || "USER",
+        phone: source.phone || "",
+        address: source.address || "",
+        isActive: source.isActive !== false,
+        points: Number(source.points || 0),
+        createdAt: source.createdAt,
+        updatedAt: source.updatedAt,
+    };
+};
+
+const buildAuthPayload = (user) => ({
+    email: user.email,
+    name: user.name,
+    role: user.role || "USER",
+});
+
+const signAccessToken = (user) => jwt.sign(buildAuthPayload(user), process.env.JWT_SECRET, {
+    expiresIn: process.env.JWT_EXPIRE || "2h",
+});
+
+const normalizeRole = (role) => (USER_ROLES.includes(role) ? role : "USER");
+
 // Initialize mock user store for memory fallback
 if (!global.mockUsers) {
     global.mockUsers = [
         {
+            _id: generateMockId(),
             name: "Admin Manager",
             email: "admin@rungear.com",
             password: bcrypt.hashSync("adminpassword", saltRounds),
             role: "ADMIN",
+            phone: "",
+            address: "",
+            isActive: true,
             points: 0,
             favoriteProducts: [],
             viewedProducts: [],
         },
         {
+            _id: generateMockId(),
             name: "Regular Member",
             email: "user@rungear.com",
             password: bcrypt.hashSync("userpassword", saltRounds),
             role: "USER",
+            phone: "",
+            address: "",
+            isActive: true,
             points: 0,
             favoriteProducts: [],
             viewedProducts: [],
@@ -103,10 +148,14 @@ const createUserService = async (name, email, password) => {
             }
             const hashPassword = await bcrypt.hash(password, saltRounds);
             const newUser = {
+                _id: generateMockId(),
                 name,
                 email,
                 password: hashPassword,
                 role: "USER",
+                phone: "",
+                address: "",
+                isActive: true,
                 points: 0,
                 favoriteProducts: [],
                 viewedProducts: [],
@@ -115,7 +164,7 @@ const createUserService = async (name, email, password) => {
             return {
                 EC: 0,
                 EM: "Account created successfully (Memory Fallback)",
-                user: { name, email, role: "USER" }
+                user: sanitizeUser(newUser),
             };
         }
 
@@ -134,6 +183,9 @@ const createUserService = async (name, email, password) => {
             email,
             password: hashPassword,
             role: "USER",
+            phone: "",
+            address: "",
+            isActive: true,
             points: 0,
             favoriteProducts: [],
             viewedProducts: [],
@@ -142,7 +194,7 @@ const createUserService = async (name, email, password) => {
         return {
             EC: 0,
             EM: "Account created successfully",
-            user: result,
+            user: sanitizeUser(result),
         };
     } catch (error) {
         console.log(">>> Error at createUserService: ", error);
@@ -161,18 +213,15 @@ const loginService = async (email, password) => {
             if (!user) {
                 return { EC: 1, EM: "Email or password is incorrect (Memory Fallback)" };
             }
+            if (user.isActive === false) {
+                return { EC: 3, EM: "This account has been deactivated. Please contact an administrator. (Memory Fallback)" };
+            }
             const isMatchPassword = await bcrypt.compare(password, user.password);
             if (!isMatchPassword) {
                 return { EC: 2, EM: "Email or password is incorrect (Memory Fallback)" };
             }
-            const payload = {
-                email: user.email,
-                name: user.name,
-                role: user.role,
-            };
-            const access_token = jwt.sign(payload, process.env.JWT_SECRET, {
-                expiresIn: process.env.JWT_EXPIRE || "2h",
-            });
+            const payload = buildAuthPayload(user);
+            const access_token = signAccessToken(user);
             return {
                 EC: 0,
                 access_token,
@@ -186,20 +235,17 @@ const loginService = async (email, password) => {
             return { EC: 1, EM: "Email or password is incorrect" };
         }
 
+        if (user.isActive === false) {
+            return { EC: 3, EM: "This account has been deactivated. Please contact an administrator." };
+        }
+
         const isMatchPassword = await bcrypt.compare(password, user.password);
         if (!isMatchPassword) {
             return { EC: 2, EM: "Email or password is incorrect" };
         }
 
-        const payload = {
-            email: user.email,
-            name: user.name,
-            role: user.role,
-        };
-
-        const access_token = jwt.sign(payload, process.env.JWT_SECRET, {
-            expiresIn: process.env.JWT_EXPIRE || "2h",
-        });
+        const payload = buildAuthPayload(user);
+        const access_token = signAccessToken(user);
 
         return {
             EC: 0,
@@ -219,12 +265,279 @@ const getUserService = async () => {
     try {
         if (!global.dbConnected) {
             // Memory fallback
-            return global.mockUsers.map((u) => ({ name: u.name, email: u.email, role: u.role }));
+            return global.mockUsers.map(sanitizeUser);
         }
-        return await userRepository.findAllWithoutPassword();
+        const users = await userRepository.findAllWithoutPassword();
+        return users.map(sanitizeUser);
     } catch (error) {
         console.log(">>> Error at getUserService: ", error);
         return [];
+    }
+};
+
+const getAccountService = async (email) => {
+    try {
+        if (!global.dbConnected) {
+            const user = global.mockUsers.find((item) => item.email === email);
+            if (!user) return { EC: 1, EM: "Account not found (Memory Fallback)" };
+            if (user.isActive === false) return { EC: 2, EM: "Account is deactivated (Memory Fallback)" };
+            return { EC: 0, user: sanitizeUser(user) };
+        }
+
+        const user = await userRepository.findByEmail(email);
+        if (!user) return { EC: 1, EM: "Account not found" };
+        if (user.isActive === false) return { EC: 2, EM: "Account is deactivated" };
+        return { EC: 0, user: sanitizeUser(user) };
+    } catch (error) {
+        console.log(">>> Error at getAccountService: ", error);
+        return { EC: -1, EM: "System error" };
+    }
+};
+
+const createManagedUserService = async (payload = {}) => {
+    try {
+        const name = String(payload.name || "").trim();
+        const email = String(payload.email || "").trim().toLowerCase();
+        const password = String(payload.password || "");
+        const role = normalizeRole(payload.role);
+
+        if (!name || !email || !password) {
+            return { EC: 1, EM: "Name, email and password are required" };
+        }
+
+        if (!global.dbConnected) {
+            const existing = global.mockUsers.find((user) => user.email === email);
+            if (existing) return { EC: 2, EM: "Email already exists (Memory Fallback)" };
+
+            const newUser = {
+                _id: generateMockId(),
+                name,
+                email,
+                password: await bcrypt.hash(password, saltRounds),
+                role,
+                phone: String(payload.phone || "").trim(),
+                address: String(payload.address || "").trim(),
+                isActive: payload.isActive !== false,
+                points: 0,
+                favoriteProducts: [],
+                viewedProducts: [],
+                createdAt: new Date(),
+                updatedAt: new Date(),
+            };
+            global.mockUsers.push(newUser);
+            return { EC: 0, EM: "User created successfully (Memory Fallback)", user: sanitizeUser(newUser) };
+        }
+
+        const existing = await userRepository.findByEmail(email);
+        if (existing) return { EC: 2, EM: "Email already exists" };
+
+        const user = await userRepository.create({
+            name,
+            email,
+            password: await bcrypt.hash(password, saltRounds),
+            role,
+            phone: String(payload.phone || "").trim(),
+            address: String(payload.address || "").trim(),
+            isActive: payload.isActive !== false,
+            points: 0,
+            favoriteProducts: [],
+            viewedProducts: [],
+        });
+
+        return { EC: 0, EM: "User created successfully", user: sanitizeUser(user) };
+    } catch (error) {
+        console.log(">>> Error at createManagedUserService: ", error);
+        return { EC: -1, EM: "System error" };
+    }
+};
+
+const updateUserService = async (id, payload = {}, actorEmail = "") => {
+    try {
+        const name = String(payload.name || "").trim();
+        const email = String(payload.email || "").trim().toLowerCase();
+        const role = normalizeRole(payload.role);
+        const phone = String(payload.phone || "").trim();
+        const address = String(payload.address || "").trim();
+
+        if (!name || !email) {
+            return { EC: 1, EM: "Name and email are required" };
+        }
+
+        if (!global.dbConnected) {
+            const user = global.mockUsers.find((item) => item._id === id);
+            if (!user) return { EC: 2, EM: "User not found (Memory Fallback)" };
+            const duplicated = global.mockUsers.find((item) => item.email === email && item._id !== id);
+            if (duplicated) return { EC: 3, EM: "Email already exists (Memory Fallback)" };
+            if (user.email === actorEmail && (email !== user.email || role !== user.role)) {
+                return { EC: 5, EM: "Use the profile page to update your own email. You cannot change your own role. (Memory Fallback)" };
+            }
+
+            user.name = name;
+            user.email = email;
+            user.role = role;
+            user.phone = phone;
+            user.address = address;
+            if (typeof payload.isActive === "boolean") {
+                if (user.email === actorEmail && payload.isActive === false) {
+                    return { EC: 4, EM: "You cannot deactivate your own account (Memory Fallback)" };
+                }
+                user.isActive = payload.isActive;
+            }
+            if (payload.password) {
+                user.password = await bcrypt.hash(String(payload.password), saltRounds);
+            }
+            user.updatedAt = new Date();
+
+            return { EC: 0, EM: "User updated successfully (Memory Fallback)", user: sanitizeUser(user) };
+        }
+
+        const user = await userRepository.findById(id);
+        if (!user) return { EC: 2, EM: "User not found" };
+        const duplicated = await userRepository.findByEmail(email);
+        if (duplicated && duplicated._id.toString() !== user._id.toString()) {
+            return { EC: 3, EM: "Email already exists" };
+        }
+        if (user.email === actorEmail && (email !== user.email || role !== user.role)) {
+            return { EC: 5, EM: "Use the profile page to update your own email. You cannot change your own role." };
+        }
+
+        if (typeof payload.isActive === "boolean") {
+            if (user.email === actorEmail && payload.isActive === false) {
+                return { EC: 4, EM: "You cannot deactivate your own account" };
+            }
+            user.isActive = payload.isActive;
+        }
+        user.name = name;
+        user.email = email;
+        user.role = role;
+        user.phone = phone;
+        user.address = address;
+        if (payload.password) {
+            user.password = await bcrypt.hash(String(payload.password), saltRounds);
+        }
+
+        await userRepository.save(user);
+
+        return { EC: 0, EM: "User updated successfully", user: sanitizeUser(user) };
+    } catch (error) {
+        console.log(">>> Error at updateUserService: ", error);
+        return { EC: -1, EM: "System error" };
+    }
+};
+
+const setUserActiveService = async (id, isActive, actorEmail = "") => {
+    try {
+        if (!global.dbConnected) {
+            const user = global.mockUsers.find((item) => item._id === id);
+            if (!user) return { EC: 2, EM: "User not found (Memory Fallback)" };
+            if (user.email === actorEmail && !isActive) {
+                return { EC: 4, EM: "You cannot deactivate your own account (Memory Fallback)" };
+            }
+            user.isActive = Boolean(isActive);
+            user.updatedAt = new Date();
+            return {
+                EC: 0,
+                EM: isActive ? "User activated successfully (Memory Fallback)" : "User deactivated successfully (Memory Fallback)",
+                user: sanitizeUser(user),
+            };
+        }
+
+        const user = await userRepository.findById(id);
+        if (!user) return { EC: 2, EM: "User not found" };
+        if (user.email === actorEmail && !isActive) {
+            return { EC: 4, EM: "You cannot deactivate your own account" };
+        }
+        user.isActive = Boolean(isActive);
+        await userRepository.save(user);
+
+        return {
+            EC: 0,
+            EM: isActive ? "User activated successfully" : "User deactivated successfully",
+            user: sanitizeUser(user),
+        };
+    } catch (error) {
+        console.log(">>> Error at setUserActiveService: ", error);
+        return { EC: -1, EM: "System error" };
+    }
+};
+
+const updateProfileService = async (email, payload = {}) => {
+    try {
+        const name = String(payload.name || "").trim();
+        const nextEmail = String(payload.email || "").trim().toLowerCase();
+        const phone = String(payload.phone || "").trim();
+        const address = String(payload.address || "").trim();
+
+        if (!name || !nextEmail) {
+            return { EC: 1, EM: "Name and email are required" };
+        }
+
+        if (!global.dbConnected) {
+            const user = global.mockUsers.find((item) => item.email === email);
+            if (!user) return { EC: 2, EM: "Account not found (Memory Fallback)" };
+            if (user.isActive === false) return { EC: 3, EM: "Account is deactivated (Memory Fallback)" };
+            const duplicated = global.mockUsers.find((item) => item.email === nextEmail && item._id !== user._id);
+            if (duplicated) return { EC: 4, EM: "Email already exists (Memory Fallback)" };
+
+            if (payload.newPassword) {
+                if (!payload.currentPassword) {
+                    return { EC: 5, EM: "Current password is required to change password (Memory Fallback)" };
+                }
+                const isMatchPassword = await bcrypt.compare(String(payload.currentPassword), user.password);
+                if (!isMatchPassword) {
+                    return { EC: 6, EM: "Current password is incorrect (Memory Fallback)" };
+                }
+                user.password = await bcrypt.hash(String(payload.newPassword), saltRounds);
+            }
+
+            user.name = name;
+            user.email = nextEmail;
+            user.phone = phone;
+            user.address = address;
+            user.updatedAt = new Date();
+
+            return {
+                EC: 0,
+                EM: "Profile updated successfully (Memory Fallback)",
+                user: sanitizeUser(user),
+                access_token: signAccessToken(user),
+            };
+        }
+
+        const user = await userRepository.findByEmail(email);
+        if (!user) return { EC: 2, EM: "Account not found" };
+        if (user.isActive === false) return { EC: 3, EM: "Account is deactivated" };
+        const duplicated = await userRepository.findByEmail(nextEmail);
+        if (duplicated && duplicated._id.toString() !== user._id.toString()) {
+            return { EC: 4, EM: "Email already exists" };
+        }
+
+        if (payload.newPassword) {
+            if (!payload.currentPassword) {
+                return { EC: 5, EM: "Current password is required to change password" };
+            }
+            const isMatchPassword = await bcrypt.compare(String(payload.currentPassword), user.password);
+            if (!isMatchPassword) {
+                return { EC: 6, EM: "Current password is incorrect" };
+            }
+            user.password = await bcrypt.hash(String(payload.newPassword), saltRounds);
+        }
+
+        user.name = name;
+        user.email = nextEmail;
+        user.phone = phone;
+        user.address = address;
+        await userRepository.save(user);
+
+        return {
+            EC: 0,
+            EM: "Profile updated successfully",
+            user: sanitizeUser(user),
+            access_token: signAccessToken(user),
+        };
+    } catch (error) {
+        console.log(">>> Error at updateProfileService: ", error);
+        return { EC: -1, EM: "System error" };
     }
 };
 
@@ -325,6 +638,11 @@ module.exports = {
     createUserService,
     loginService,
     getUserService,
+    getAccountService,
+    createManagedUserService,
+    updateUserService,
+    setUserActiveService,
+    updateProfileService,
     forgotPasswordService,
     resetPasswordService,
 };

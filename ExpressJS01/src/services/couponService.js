@@ -132,7 +132,12 @@ const getCouponsService = async (email) => {
             return serviceResponse(200, {
                 EC: 0,
                 EM: "Coupons loaded successfully (Memory Fallback)",
-                coupons: global.mockCoupons.filter((coupon) => !coupon.ownerEmail || coupon.ownerEmail === email),
+                coupons: global.mockCoupons.filter((coupon) => (
+                    (!coupon.ownerEmail || coupon.ownerEmail === email)
+                    && coupon.active
+                    && (!coupon.expiresAt || new Date(coupon.expiresAt) > new Date())
+                    && (!coupon.usageLimit || (coupon.usedCount || 0) < coupon.usageLimit)
+                )),
             });
         }
 

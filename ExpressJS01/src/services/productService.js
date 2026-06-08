@@ -460,9 +460,30 @@ const filterProductsArray = (query = {}) => {
     const promotion = normalize(query.promotion);
     const stockStatus = normalize(query.stockStatus);
     const sort = normalize(query.sort);
-    const minPrice = Number(query.minPrice) || 0;
-    const maxPrice = Number(query.maxPrice) || Infinity;
-    const minRating = Number(query.minRating) || 0;
+
+    let minPrice = -Infinity;
+    if (query.minPrice !== undefined && query.minPrice !== null && String(query.minPrice).trim() !== "") {
+        const parsedMin = Number(query.minPrice);
+        if (!isNaN(parsedMin)) {
+            minPrice = parsedMin;
+        }
+    }
+
+    let maxPrice = Infinity;
+    if (query.maxPrice !== undefined && query.maxPrice !== null && String(query.maxPrice).trim() !== "") {
+        const parsedMax = Number(query.maxPrice);
+        if (!isNaN(parsedMax)) {
+            maxPrice = parsedMax;
+        }
+    }
+
+    let minRating = 0;
+    if (query.minRating !== undefined && query.minRating !== null && String(query.minRating).trim() !== "") {
+        const parsedRating = Number(query.minRating);
+        if (!isNaN(parsedRating) && parsedRating > 0) {
+            minRating = parsedRating;
+        }
+    }
 
     const filtered = staticProducts.filter((product) => {
         const catInfo = getCategoryInfo(product.category);

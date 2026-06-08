@@ -4,6 +4,11 @@ const {
     handleLogin,
     getUser,
     getAccount,
+    createManagedUser,
+    updateUser,
+    deactivateUser,
+    activateUser,
+    updateProfile,
     forgotPassword,
     resetPassword,
 } = require("../controllers/userController");
@@ -38,11 +43,15 @@ const {
 const {
     createOrder,
     getOrders,
+    getAllOrders,
     getOrderById,
     cancelOrder,
+    requestReturnOrder,
+    receiveOrder,
     updateOrderStatus,
 } = require("../controllers/orderController");
 const auth = require("../middleware/auth");
+const { requireAdmin } = require("../middleware/rbac");
 
 const routerAPI = express.Router();
 
@@ -54,8 +63,14 @@ routerAPI.post("/reset-password", resetPassword);
 routerAPI.use(auth);
 
 routerAPI.get("/", (req, res) => res.status(200).json("Hello world api"));
-routerAPI.get("/user", getUser);
+routerAPI.get("/user", requireAdmin, getUser);
 routerAPI.get("/account", getAccount);
+routerAPI.patch("/profile", updateProfile);
+routerAPI.get("/admin/users", requireAdmin, getUser);
+routerAPI.post("/admin/users", requireAdmin, createManagedUser);
+routerAPI.put("/admin/users/:id", requireAdmin, updateUser);
+routerAPI.patch("/admin/users/:id/deactivate", requireAdmin, deactivateUser);
+routerAPI.patch("/admin/users/:id/activate", requireAdmin, activateUser);
 routerAPI.get("/products", getProducts);
 routerAPI.get("/products/by-category", getProductsByCategory);
 routerAPI.get("/products/ranking", getProductRanking);
@@ -79,10 +94,13 @@ routerAPI.delete("/cart", clearCart);
 
 // Order Routes
 routerAPI.post("/orders", createOrder);
+routerAPI.get("/admin/orders", requireAdmin, getAllOrders);
 routerAPI.get("/orders", getOrders);
 routerAPI.get("/orders/:id", getOrderById);
 routerAPI.post("/orders/:id/cancel", cancelOrder);
-routerAPI.put("/orders/:id/status", updateOrderStatus);
+routerAPI.post("/orders/:id/return", requestReturnOrder);
+routerAPI.post("/orders/:id/receive", receiveOrder);
+routerAPI.put("/orders/:id/status", requireAdmin, updateOrderStatus);
 
 module.exports = routerAPI;
 
