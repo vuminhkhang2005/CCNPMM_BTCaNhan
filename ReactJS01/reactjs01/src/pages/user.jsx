@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { Button, Form, Input, Modal, Popconfirm, Space, Switch, Table, Tag, notification } from "antd";
+import { Button, Form, Input, Modal, Popconfirm, Select, Space, Switch, Table, Tag, notification } from "antd";
 import { EditOutlined, PlusOutlined, StopOutlined, CheckCircleOutlined, UsergroupAddOutlined } from "@ant-design/icons";
+import useLockedAsyncAction from "../hooks/useLockedAsyncAction";
 import {
   activateUserApi,
   createManagedUserApi,
@@ -29,8 +30,9 @@ const UserPage = () => {
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
-  const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm();
+  const { loading: submitting, run: runSubmit } = useLockedAsyncAction();
+  const { loading: statusSubmitting, run: runSetActive } = useLockedAsyncAction();
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -82,59 +84,64 @@ const UserPage = () => {
   };
 
   const handleSubmit = async (values) => {
-    setSubmitting(true);
-    try {
-      const payload = {
-        name: values.name,
-        email: values.email,
-        role: values.role,
-        phone: values.phone || "",
-        address: values.address || "",
-        isActive: values.isActive !== false,
-      };
+    await runSubmit(async () => {
+      try {
+        const payload = {
+          name: values.name,
+          email: values.email,
+          role: values.role,
+          phone: values.phone || "",
+          address: values.address || "",
+          isActive: values.isActive !== false,
+        };
 
-      if (values.password) {
-        payload.password = values.password;
-      }
+        if (values.password) {
+          payload.password = values.password;
+        }
 
-      const res = editingUser
-        ? await updateManagedUserApi(editingUser._id, payload)
-        : await createManagedUserApi({ ...payload, password: values.password });
+        const res = editingUser
+          ? await updateManagedUserApi(editingUser._id, payload)
+          : await createManagedUserApi({ ...payload, password: values.password });
 
-      if (res?.EC === 0) {
-        notification.success({
-          message: editingUser ? "User updated successfully" : "User created successfully",
-          description: res.EM,
-        });
-        closeModal();
-        await fetchUsers();
-      } else {
+        if (res?.EC === 0) {
+          notification.success({
+            message: editingUser ? "User updated successfully" : "User created successfully",
+            description: res.EM,
+          });
+          closeModal();
+          await fetchUsers();
+        } else {
+          notification.error({
+            message: "Could not save user",
+            description: res?.EM || "Please check user information again.",
+          });
+        }
+      } catch (error) {
+        console.error(">>> Error saving user:", error);
         notification.error({
           message: "Could not save user",
-          description: res?.EM || "Please check user information again.",
+          description: "System error occurred while saving user.",
         });
       }
-    } catch (error) {
-      console.error(">>> Error saving user:", error);
-    } finally {
-      setSubmitting(false);
-    }
+    });
   };
 
   const handleSetActive = async (user, isActive) => {
-    const res = isActive ? await activateUserApi(user._id) : await deactivateUserApi(user._id);
-    if (res?.EC === 0) {
-      notification.success({
-        message: isActive ? "User activated successfully" : "User deactivated successfully",
-        description: res.EM,
-      });
-      await fetchUsers();
-    } else {
-      notification.error({
-        message: "Could not update user status",
-        description: res?.EM || "Please try again.",
-      });
-    }
+    await runSetActive(async () => {
+      const res = isActive ? await activateUserApi(user._id) : await deactivateUserApi(user._id);
+      if (res?.EC === 0) {
+        notification.success({
+          message: isActive ? "User activated successfully" : "User deactivated successfully",
+          description: res.EM,
+        });
+        await fetchUsers();
+      } else {
+        notification.error({
+          message: "Could not update user status",
+          description: res?.EM || "Please try again.",
+        });
+      }
+    });
   };
 
   const columns = [
@@ -184,7 +191,7 @@ const UserPage = () => {
             Edit
           </Button>
           {record.isActive === false ? (
-            <Button icon={<CheckCircleOutlined />} onClick={() => handleSetActive(record, true)}>
+            <Button icon={<CheckCircleOutlined />} loading={statusSubmitting} disabled={statusSubmitting} onClick={() => handleSetActive(record, true)}>
               Activate
             </Button>
           ) : (
@@ -193,9 +200,10 @@ const UserPage = () => {
               description="User will not be able to log in or make API requests with old tokens."
               okText="Deactivate"
               cancelText="Close"
+              okButtonProps={{ loading: statusSubmitting, disabled: statusSubmitting }}
               onConfirm={() => handleSetActive(record, false)}
             >
-              <Button danger icon={<StopOutlined />}>
+              <Button danger icon={<StopOutlined />} loading={statusSubmitting} disabled={statusSubmitting}>
                 Deactivate
               </Button>
             </Popconfirm>

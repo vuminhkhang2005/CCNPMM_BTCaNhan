@@ -4,6 +4,7 @@ const express = require("express");
 const cors = require("cors");
 const apiRoutes = require("./routes/api");
 const connection = require("./config/database");
+const { apiRateLimiter } = require("./middleware/rateLimit");
 
 const app = express();
 const port = process.env.PORT || 8888;
@@ -16,7 +17,7 @@ app.get("/", (req, res) => {
     res.send("Running shoe storefront API");
 });
 
-app.use("/v1/api", apiRoutes);
+app.use("/v1/api", apiRateLimiter, apiRoutes);
 
 (async () => {
     try {

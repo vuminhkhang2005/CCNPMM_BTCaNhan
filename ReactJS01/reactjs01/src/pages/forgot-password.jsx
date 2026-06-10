@@ -1,20 +1,24 @@
 import { Button, Divider, Form, Input, notification } from "antd";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowLeftOutlined, MailOutlined } from "@ant-design/icons";
+import useLockedAsyncAction from "../hooks/useLockedAsyncAction";
 import { forgotPasswordApi } from "../util/api";
 import authBanner from "../assets/auth_banner.png";
 
 const ForgotPasswordPage = () => {
   const navigate = useNavigate();
+  const { loading: submitting, run: runSubmit } = useLockedAsyncAction();
 
   const onFinish = async ({ email }) => {
-    const res = await forgotPasswordApi(email);
-    if (res?.EC === 0) {
-      notification.success({ message: "Forgot Password", description: res.EM || "A reset code has been sent. Please check your email." });
-      navigate("/reset-password");
-    } else {
-      notification.error({ message: "Failed to Send Code", description: res?.EM || "Could not send reset code to this email." });
-    }
+    await runSubmit(async () => {
+      const res = await forgotPasswordApi(email);
+      if (res?.EC === 0) {
+        notification.success({ message: "Forgot Password", description: res.EM || "A reset code has been sent. Please check your email." });
+        navigate("/reset-password");
+      } else {
+        notification.error({ message: "Failed to Send Code", description: res?.EM || "Could not send reset code to this email." });
+      }
+    });
   };
 
   return (
@@ -89,6 +93,8 @@ const ForgotPasswordPage = () => {
                 type="primary" 
                 htmlType="submit" 
                 size="large"
+                loading={submitting}
+                disabled={submitting}
                 style={{ backgroundColor: "#047857", borderColor: "#047857" }}
                 className="w-full hover:!bg-emerald-800 border-none font-semibold text-white rounded-lg h-11 shadow-sm hover:shadow transition-all duration-200"
               >

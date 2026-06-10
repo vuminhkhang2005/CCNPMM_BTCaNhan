@@ -3,33 +3,37 @@ import { Button, Divider, Form, Input, notification } from "antd";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowLeftOutlined, MailOutlined, LockOutlined } from "@ant-design/icons";
 import { AuthContext } from "../components/context/auth";
+import useLockedAsyncAction from "../hooks/useLockedAsyncAction";
 import { loginApi } from "../util/api";
 import authBanner from "../assets/auth_banner.png";
 
 const LoginPage = () => {
   const navigate = useNavigate();
   const { setAuth } = useContext(AuthContext);
+  const { loading: submitting, run: runSubmit } = useLockedAsyncAction();
 
   const onFinish = async ({ email, password }) => {
-    const res = await loginApi(email, password);
-    if (res?.EC === 0) {
-      localStorage.setItem("access_token", res.access_token);
-      setAuth({
-        isAuthenticated: true,
-        user: {
-          email: res?.user?.email ?? "",
-          name: res?.user?.name ?? "",
-          role: res?.user?.role ?? "",
-          phone: res?.user?.phone ?? "",
-          address: res?.user?.address ?? "",
-          isActive: res?.user?.isActive !== false,
-        },
-      });
-      notification.success({ message: "Login", description: "Login successful!" });
-      navigate("/");
-    } else {
-      notification.error({ message: "Login Failed", description: res?.EM || "Incorrect email or password." });
-    }
+    await runSubmit(async () => {
+      const res = await loginApi(email, password);
+      if (res?.EC === 0) {
+        localStorage.setItem("access_token", res.access_token);
+        setAuth({
+          isAuthenticated: true,
+          user: {
+            email: res?.user?.email ?? "",
+            name: res?.user?.name ?? "",
+            role: res?.user?.role ?? "",
+            phone: res?.user?.phone ?? "",
+            address: res?.user?.address ?? "",
+            isActive: res?.user?.isActive !== false,
+          },
+        });
+        notification.success({ message: "Login", description: "Login successful!" });
+        navigate("/");
+      } else {
+        notification.error({ message: "Login Failed", description: res?.EM || "Incorrect email or password." });
+      }
+    });
   };
 
   return (
@@ -126,6 +130,8 @@ const LoginPage = () => {
                 type="primary" 
                 htmlType="submit" 
                 size="large"
+                loading={submitting}
+                disabled={submitting}
                 style={{ backgroundColor: "#047857", borderColor: "#047857" }}
                 className="w-full hover:!bg-emerald-800 border-none font-semibold text-white rounded-lg h-11 shadow-sm hover:shadow transition-all duration-200"
               >

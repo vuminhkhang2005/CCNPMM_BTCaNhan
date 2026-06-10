@@ -1,20 +1,24 @@
 import { Button, Divider, Form, Input, notification } from "antd";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowLeftOutlined, MailOutlined, LockOutlined, SafetyOutlined } from "@ant-design/icons";
+import useLockedAsyncAction from "../hooks/useLockedAsyncAction";
 import { resetPasswordApi } from "../util/api";
 import authBanner from "../assets/auth_banner.png";
 
 const ResetPasswordPage = () => {
   const navigate = useNavigate();
+  const { loading: submitting, run: runSubmit } = useLockedAsyncAction();
 
   const onFinish = async ({ email, resetToken, newPassword }) => {
-    const res = await resetPasswordApi(email, resetToken, newPassword);
-    if (res?.EC === 0) {
-      notification.success({ message: "Reset Password", description: res.EM || "Password reset successfully. Please login again." });
-      navigate("/login");
-    } else {
-      notification.error({ message: "Reset Failed", description: res?.EM || "Could not reset your password." });
-    }
+    await runSubmit(async () => {
+      const res = await resetPasswordApi(email, resetToken, newPassword);
+      if (res?.EC === 0) {
+        notification.success({ message: "Reset Password", description: res.EM || "Password reset successfully. Please login again." });
+        navigate("/login");
+      } else {
+        notification.error({ message: "Reset Failed", description: res?.EM || "Could not reset your password." });
+      }
+    });
   };
 
   return (
@@ -143,6 +147,8 @@ const ResetPasswordPage = () => {
                 type="primary" 
                 htmlType="submit" 
                 size="large"
+                loading={submitting}
+                disabled={submitting}
                 style={{ backgroundColor: "#047857", borderColor: "#047857" }}
                 className="w-full hover:!bg-emerald-800 border-none font-semibold text-white rounded-lg h-11 shadow-sm hover:shadow transition-all duration-200"
               >

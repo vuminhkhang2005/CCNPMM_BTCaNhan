@@ -1,6 +1,6 @@
 import { useContext } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { CartContext } from "../components/context/cart.context";
+import { CartContext } from "../components/context/cart";
 import { DeleteOutlined, MinusOutlined, PlusOutlined, ShoppingCartOutlined, ArrowLeftOutlined } from "@ant-design/icons";
 import { Button, Popconfirm, Spin } from "antd";
 

@@ -1,5 +1,6 @@
 import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { AuthContext } from "../components/context/auth";
+import useLockedAsyncAction from "../hooks/useLockedAsyncAction";
 import { getAdminOrdersApi, updateOrderStatusApi } from "../util/api";
 import {
   CheckOutlined,
@@ -76,13 +77,13 @@ const AdminOrdersPage = () => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [unauthorized, setUnauthorized] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [statusModalOpen, setStatusModalOpen] = useState(false);
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
   const [cancelAction, setCancelAction] = useState("");
   const [statusForm] = Form.useForm();
   const [cancelForm] = Form.useForm();
+  const { loading: submitting, run: runSubmit } = useLockedAsyncAction();
 
   const selectedStatusOptions = useMemo(
     () => getAllowedStatusOptions(selectedOrder?.status),
@@ -152,64 +153,70 @@ const AdminOrdersPage = () => {
   const handleStatusSubmit = async (values) => {
     if (!selectedOrder) return;
 
-    setSubmitting(true);
-    try {
-      const res = await updateOrderStatusApi(selectedOrder._id, {
-        action: "update-status",
-        status: Number(values.status),
-        note: values.note,
-      });
-
-      if (res && res.EC === 0) {
-        notification.success({
-          message: "Status Update Submitted",
-          description: `Order has transitioned to ${getStatusName(values.status)}.`,
+    await runSubmit(async () => {
+      try {
+        const res = await updateOrderStatusApi(selectedOrder._id, {
+          action: "update-status",
+          status: Number(values.status),
+          note: values.note,
         });
-        closeStatusModal();
-        await fetchAllOrders();
-      } else {
+
+        if (res && res.EC === 0) {
+          notification.success({
+            message: "Status Update Submitted",
+            description: `Order has transitioned to ${getStatusName(values.status)}.`,
+          });
+          closeStatusModal();
+          await fetchAllOrders();
+        } else {
+          notification.error({
+            message: "Update Failed",
+            description: res?.EM || "Could not update order status.",
+          });
+        }
+      } catch (error) {
+        console.error(">>> Error updating status:", error);
         notification.error({
           message: "Update Failed",
-          description: res?.EM || "Could not update order status.",
+          description: "Could not update order status at this moment.",
         });
       }
-    } catch (error) {
-      console.error(">>> Error updating status:", error);
-    } finally {
-      setSubmitting(false);
-    }
+    });
   };
 
   const handleCancelSubmit = async (values) => {
     if (!selectedOrder || !cancelAction) return;
 
-    setSubmitting(true);
-    try {
-      const res = await updateOrderStatusApi(selectedOrder._id, {
-        action: cancelAction,
-        note: values.note,
-      });
-
-      if (res && res.EC === 0) {
-        notification.success({
-          message: "Cancellation Request Resolved",
-          description: cancelAction === "approve-cancel"
-            ? "Cancellation request has been approved."
-            : "Cancellation request has been rejected.",
+    await runSubmit(async () => {
+      try {
+        const res = await updateOrderStatusApi(selectedOrder._id, {
+          action: cancelAction,
+          note: values.note,
         });
-        closeCancelModal();
-        await fetchAllOrders();
-      } else {
+
+        if (res && res.EC === 0) {
+          notification.success({
+            message: "Cancellation Request Resolved",
+            description: cancelAction === "approve-cancel"
+              ? "Cancellation request has been approved."
+              : "Cancellation request has been rejected.",
+          });
+          closeCancelModal();
+          await fetchAllOrders();
+        } else {
+          notification.error({
+            message: "Resolution Failed",
+            description: res?.EM || "Could not resolve cancellation request.",
+          });
+        }
+      } catch (error) {
+        console.error(">>> Error resolving cancel request:", error);
         notification.error({
           message: "Resolution Failed",
-          description: res?.EM || "Could not resolve cancellation request.",
+          description: "Could not resolve cancellation request at this moment.",
         });
       }
-    } catch (error) {
-      console.error(">>> Error resolving cancel request:", error);
-    } finally {
-      setSubmitting(false);
-    }
+    });
   };
 
   const columns = [

@@ -1,25 +1,27 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { AuthContext } from "./auth";
+import { CartContext } from "./cart";
 import { getCartApi, addToCartApi, updateCartItemApi, removeFromCartApi, clearCartApi } from "../../util/api";
 import { notification } from "antd";
-
-export const CartContext = createContext({
-  cart: { items: [] },
-  cartCount: 0,
-  loading: false,
-  fetchCart: () => {},
-  addToCart: () => {},
-  updateCartItem: () => {},
-  removeFromCart: () => {},
-  clearCart: () => {},
-});
 
 export const CartWrapper = ({ children }) => {
   const { auth } = useContext(AuthContext);
   const [cart, setCart] = useState({ items: [] });
   const [loading, setLoading] = useState(false);
+  const mutationLocksRef = useRef(new Set());
 
-  const fetchCart = async () => {
+  const runCartMutation = async (key, action) => {
+    if (mutationLocksRef.current.has(key)) return false;
+
+    mutationLocksRef.current.add(key);
+    try {
+      return await action();
+    } finally {
+      mutationLocksRef.current.delete(key);
+    }
+  };
+
+  const fetchCart = useCallback(async () => {
     if (!auth.isAuthenticated) {
       setCart({ items: [] });
       return;
@@ -35,11 +37,11 @@ export const CartWrapper = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [auth.isAuthenticated]);
 
   useEffect(() => {
-    fetchCart();
-  }, [auth.isAuthenticated]);
+    void Promise.resolve().then(fetchCart);
+  }, [fetchCart]);
 
   const addToCart = async (item) => {
     if (!auth.isAuthenticated) {
@@ -50,76 +52,83 @@ export const CartWrapper = ({ children }) => {
       return false;
     }
 
-    try {
-      const res = await addToCartApi(item);
-      if (res && res.EC === 0) {
-        setCart(res.cart);
-        notification.success({
-          message: "Cart",
-          description: `Successfully added ${item.quantity} x ${item.name} to cart!`,
-        });
-        return true;
-      } else {
+    return runCartMutation(`add:${item.productId}:${item.color}:${item.size}`, async () => {
+      try {
+        const res = await addToCartApi(item);
+        if (res && res.EC === 0) {
+          setCart(res.cart);
+          notification.success({
+            message: "Cart",
+            description: `Successfully added ${item.quantity} x ${item.name} to cart!`,
+          });
+          return true;
+        }
         notification.error({
           message: "Cart",
           description: res?.EM || "Could not add to cart.",
         });
         return false;
+      } catch (error) {
+        console.error(">>> Error adding to cart:", error);
+        notification.error({
+          message: "Cart",
+          description: "System error occurred while adding to cart.",
+        });
+        return false;
       }
-    } catch (error) {
-      console.error(">>> Error adding to cart:", error);
-      notification.error({
-        message: "Cart",
-        description: "System error occurred while adding to cart.",
-      });
-      return false;
-    }
+    });
   };
 
   const updateCartItem = async (productId, color, size, quantity) => {
-    try {
-      const res = await updateCartItemApi({ productId, color, size, quantity });
-      if (res && res.EC === 0) {
-        setCart(res.cart);
-        return true;
+    return runCartMutation(`update:${productId}:${color}:${size}`, async () => {
+      try {
+        const res = await updateCartItemApi({ productId, color, size, quantity });
+        if (res && res.EC === 0) {
+          setCart(res.cart);
+          return true;
+        }
+        return false;
+      } catch (error) {
+        console.error(">>> Error updating cart item:", error);
+        return false;
       }
-      return false;
-    } catch (error) {
-      console.error(">>> Error updating cart item:", error);
-      return false;
-    }
+    });
   };
 
   const removeFromCart = async (productId, color, size) => {
-    try {
-      const res = await removeFromCartApi({ productId, color, size });
-      if (res && res.EC === 0) {
-        setCart(res.cart);
-        notification.success({
-          message: "Cart",
-          description: "Removed item from cart.",
-        });
-        return true;
+    return runCartMutation(`remove:${productId}:${color}:${size}`, async () => {
+      try {
+        const res = await removeFromCartApi({ productId, color, size });
+        if (res && res.EC === 0) {
+          setCart(res.cart);
+          notification.success({
+            message: "Cart",
+            description: "Removed item from cart.",
+          });
+          return true;
+        }
+        return false;
+      } catch (error) {
+        console.error(">>> Error removing from cart:", error);
+        return false;
       }
-      return false;
-    } catch (error) {
-      console.error(">>> Error removing from cart:", error);
-      return false;
-    }
+    });
   };
 
   const clearCart = async () => {
-    try {
-      const res = await clearCartApi();
-      if (res && res.EC === 0) {
-        setCart(res.cart);
-        return true;
+    return runCartMutation("clear", async () => {
+      try {
+        const res = await clearCartApi();
+        if (res && res.EC === 0) {
+          setCart(res.cart);
+          return true;
+        }
+        return false;
+      } catch (error) {
+        console.error(">>> Error clearing cart:", error);
+        return false;
       }
-      return false;
-    } catch (error) {
-      console.error(">>> Error clearing cart:", error);
-      return false;
-    }
+    });
   };
 
   const cartCount = cart.items ? cart.items.reduce((sum, item) => sum + item.quantity, 0) : 0;

@@ -52,13 +52,14 @@ const {
 } = require("../controllers/orderController");
 const auth = require("../middleware/auth");
 const { requireAdmin } = require("../middleware/rbac");
+const { authRateLimiter } = require("../middleware/rateLimit");
 
 const routerAPI = express.Router();
 
-routerAPI.post("/register", createUser);
-routerAPI.post("/login", handleLogin);
-routerAPI.post("/forgot-password", forgotPassword);
-routerAPI.post("/reset-password", resetPassword);
+routerAPI.post("/register", authRateLimiter, createUser);
+routerAPI.post("/login", authRateLimiter, handleLogin);
+routerAPI.post("/forgot-password", authRateLimiter, forgotPassword);
+routerAPI.post("/reset-password", authRateLimiter, resetPassword);
 
 routerAPI.use(auth);
 

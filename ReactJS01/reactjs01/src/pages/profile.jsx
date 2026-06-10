@@ -2,11 +2,13 @@ import { useContext, useEffect } from "react";
 import { Button, Form, Input, notification } from "antd";
 import { IdcardOutlined, LockOutlined, MailOutlined, PhoneOutlined, UserOutlined, HomeOutlined } from "@ant-design/icons";
 import { AuthContext } from "../components/context/auth";
+import useLockedAsyncAction from "../hooks/useLockedAsyncAction";
 import { updateProfileApi } from "../util/api";
 
 const ProfilePage = () => {
   const { auth, setAuth } = useContext(AuthContext);
   const [form] = Form.useForm();
+  const { loading: submitting, run: runSubmit } = useLockedAsyncAction();
 
   useEffect(() => {
     form.setFieldsValue({
@@ -20,45 +22,47 @@ const ProfilePage = () => {
   }, [auth.user, form]);
 
   const handleSubmit = async (values) => {
-    const payload = {
-      name: values.name,
-      email: values.email,
-      phone: values.phone || "",
-      address: values.address || "",
-    };
+    await runSubmit(async () => {
+      const payload = {
+        name: values.name,
+        email: values.email,
+        phone: values.phone || "",
+        address: values.address || "",
+      };
 
-    if (values.newPassword) {
-      payload.currentPassword = values.currentPassword;
-      payload.newPassword = values.newPassword;
-    }
-
-    const res = await updateProfileApi(payload);
-    if (res?.EC === 0) {
-      if (res.access_token) {
-        localStorage.setItem("access_token", res.access_token);
+      if (values.newPassword) {
+        payload.currentPassword = values.currentPassword;
+        payload.newPassword = values.newPassword;
       }
-      setAuth({
-        isAuthenticated: true,
-        user: {
-          email: res.user.email,
-          name: res.user.name,
-          role: res.user.role,
-          phone: res.user.phone || "",
-          address: res.user.address || "",
-          isActive: res.user.isActive !== false,
-        },
-      });
-      form.setFieldsValue({ currentPassword: "", newPassword: "" });
-      notification.success({
-        message: "Update Profile",
-        description: res.EM || "Personal information updated.",
-      });
-    } else {
-      notification.error({
-        message: "Update Error",
-        description: res?.EM || "Could not update profile.",
-      });
-    }
+
+      const res = await updateProfileApi(payload);
+      if (res?.EC === 0) {
+        if (res.access_token) {
+          localStorage.setItem("access_token", res.access_token);
+        }
+        setAuth({
+          isAuthenticated: true,
+          user: {
+            email: res.user.email,
+            name: res.user.name,
+            role: res.user.role,
+            phone: res.user.phone || "",
+            address: res.user.address || "",
+            isActive: res.user.isActive !== false,
+          },
+        });
+        form.setFieldsValue({ currentPassword: "", newPassword: "" });
+        notification.success({
+          message: "Update Profile",
+          description: res.EM || "Personal information updated.",
+        });
+      } else {
+        notification.error({
+          message: "Update Error",
+          description: res?.EM || "Could not update profile.",
+        });
+      }
+    });
   };
 
   return (
@@ -131,7 +135,7 @@ const ProfilePage = () => {
           </div>
 
           <div className="flex justify-end">
-            <Button type="primary" htmlType="submit" className="font-bold">
+            <Button type="primary" htmlType="submit" loading={submitting} disabled={submitting} className="font-bold">
               Save Changes
             </Button>
           </div>

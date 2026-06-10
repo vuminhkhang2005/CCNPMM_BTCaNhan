@@ -8,7 +8,8 @@ import "swiper/css";
 import "swiper/css/navigation";
 import "swiper/css/pagination";
 import { AuthContext } from "../components/context/auth";
-import { CartContext } from "../components/context/cart.context";
+import { CartContext } from "../components/context/cart";
+import useLockedAsyncAction from "../hooks/useLockedAsyncAction";
 import { createProductReviewApi, getProductDetailApi, getProductReviewsApi, toggleFavoriteApi } from "../util/api";
 
 const formatCurrency = (value) => new Intl.NumberFormat("vi-VN", {
@@ -53,8 +54,9 @@ const ProductDetailPage = () => {
   const [reviewOrderId, setReviewOrderId] = useState("");
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState("");
-  const [favoriteLoading, setFavoriteLoading] = useState(false);
-  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const { loading: favoriteLoading, run: runToggleFavorite } = useLockedAsyncAction();
+  const { loading: reviewSubmitting, run: runSubmitReview } = useLockedAsyncAction();
+  const { loading: addingToCart, run: runAddToCart } = useLockedAsyncAction();
 
   useEffect(() => {
     if (!auth.isAuthenticated) return;
@@ -102,27 +104,32 @@ const ProductDetailPage = () => {
   const handleToggleFavorite = async () => {
     if (!product) return;
 
-    setFavoriteLoading(true);
-    try {
-      const res = await toggleFavoriteApi(product.slug, {
-        productId: product.id,
-        product,
-      });
-      if (res?.EC === 0) {
-        setIsFavorite(Boolean(res.isFavorite));
-        notification.success({
-          message: "Favorites",
-          description: res.EM,
+    await runToggleFavorite(async () => {
+      try {
+        const res = await toggleFavoriteApi(product.slug, {
+          productId: product.id,
+          product,
         });
-      } else {
+        if (res?.EC === 0) {
+          setIsFavorite(Boolean(res.isFavorite));
+          notification.success({
+            message: "Favorites",
+            description: res.EM,
+          });
+        } else {
+          notification.error({
+            message: "Favorites",
+            description: res?.EM || "Could not update favorite product.",
+          });
+        }
+      } catch (error) {
+        console.error(">>> Error updating favorite:", error);
         notification.error({
           message: "Favorites",
-          description: res?.EM || "Could not update favorite product.",
+          description: "System error occurred while updating favorite product.",
         });
       }
-    } finally {
-      setFavoriteLoading(false);
-    }
+    });
   };
 
   const handleSubmitReview = async () => {
@@ -134,32 +141,37 @@ const ProductDetailPage = () => {
       return;
     }
 
-    setReviewSubmitting(true);
-    try {
-      const res = await createProductReviewApi(slug, {
-        orderId: reviewOrderId,
-        rating: reviewRating,
-        comment: reviewComment,
-      });
-      if (res?.EC === 0) {
-        notification.success({
-          message: "Review submitted",
-          description: `You received ${res.reward?.points || 0} points and coupon ${res.reward?.coupon?.code || ""}.`,
+    await runSubmitReview(async () => {
+      try {
+        const res = await createProductReviewApi(slug, {
+          orderId: reviewOrderId,
+          rating: reviewRating,
+          comment: reviewComment,
         });
-        setReviewComment("");
-        setReviewRating(5);
-        setCanReview(false);
-        setReviewableOrders([]);
-        await refreshReviews();
-      } else {
+        if (res?.EC === 0) {
+          notification.success({
+            message: "Review submitted",
+            description: `You received ${res.reward?.points || 0} points and coupon ${res.reward?.coupon?.code || ""}.`,
+          });
+          setReviewComment("");
+          setReviewRating(5);
+          setCanReview(false);
+          setReviewableOrders([]);
+          await refreshReviews();
+        } else {
+          notification.error({
+            message: "Review failed",
+            description: res?.EM || "Could not submit review.",
+          });
+        }
+      } catch (error) {
+        console.error(">>> Error submitting review:", error);
         notification.error({
           message: "Review failed",
-          description: res?.EM || "Could not submit review.",
+          description: "System error occurred while submitting review.",
         });
       }
-    } finally {
-      setReviewSubmitting(false);
-    }
+    });
   };
   const handleAddToCart = async () => {
     if (!selectedColor || !selectedSize) {
@@ -169,15 +181,17 @@ const ProductDetailPage = () => {
       });
       return;
     }
-    await addToCart({
-      productId: product.id,
-      slug: product.slug,
-      name: product.name,
-      price: product.price,
-      color: selectedColor,
-      size: Number(selectedSize),
-      quantity: Number(quantity),
-      image: product.images[0],
+    await runAddToCart(async () => {
+      await addToCart({
+        productId: product.id,
+        slug: product.slug,
+        name: product.name,
+        price: product.price,
+        color: selectedColor,
+        size: Number(selectedSize),
+        quantity: Number(quantity),
+        image: product.images[0],
+      });
     });
   };
 
@@ -300,7 +314,9 @@ const ProductDetailPage = () => {
               <span className="grid w-14 place-items-center border-x border-stone-300 text-sm font-black text-stone-950">{quantity}</span>
               <button type="button" onClick={increaseQuantity} disabled={quantity >= product.stock || isOutOfStock} className="grid w-12 place-items-center text-stone-700 disabled:cursor-not-allowed disabled:text-stone-300"><PlusOutlined /></button>
             </div>
-            <button type="button" onClick={handleAddToCart} disabled={isOutOfStock} className="inline-flex h-12 items-center gap-2 rounded-md bg-emerald-700 px-5 text-sm font-black text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-stone-300"><ShoppingCartOutlined /> Add to cart</button>
+            <button type="button" onClick={handleAddToCart} disabled={isOutOfStock || addingToCart} className="inline-flex h-12 items-center gap-2 rounded-md bg-emerald-700 px-5 text-sm font-black text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-stone-300">
+              {addingToCart ? <Spin size="small" /> : <ShoppingCartOutlined />} {addingToCart ? "Adding..." : "Add to cart"}
+            </button>
             <Button
               type={isFavorite ? "primary" : "default"}
               danger={isFavorite}

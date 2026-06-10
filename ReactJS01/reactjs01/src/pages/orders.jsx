@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { getOrdersApi, cancelOrderApi, requestReturnOrderApi, receiveOrderApi } from "../util/api";
+import useLockedAsyncAction from "../hooks/useLockedAsyncAction";
 import { CalendarOutlined, HistoryOutlined, ShoppingOutlined, ClockCircleOutlined, ExclamationCircleOutlined } from "@ant-design/icons";
 import { Steps, Alert, Tag, Modal, Input, Button, Spin, Empty, notification } from "antd";
 
@@ -79,11 +80,12 @@ const OrdersPage = () => {
   const [loading, setLoading] = useState(false);
   const [cancelModalVisible, setCancelModalVisible] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
-  const [submittingCancel, setSubmittingCancel] = useState(false);
   const [returnModalVisible, setReturnModalVisible] = useState(false);
   const [returnReason, setReturnReason] = useState("");
-  const [submittingReturn, setSubmittingReturn] = useState(false);
   const [now, setNow] = useState(0);
+  const { loading: submittingCancel, run: runConfirmCancel } = useLockedAsyncAction();
+  const { loading: submittingReturn, run: runConfirmReturn } = useLockedAsyncAction();
+  const { loading: submittingReceipt, run: runConfirmReceipt } = useLockedAsyncAction();
 
   const fetchOrders = useCallback(async (selectFirst = false) => {
     setLoading(true);
@@ -127,31 +129,30 @@ const OrdersPage = () => {
 
   const handleConfirmCancel = async () => {
     if (!selectedOrder) return;
-    setSubmittingCancel(true);
-    try {
-      const res = await cancelOrderApi(selectedOrder._id, cancelReason);
-      if (res && res.EC === 0) {
-        notification.success({
-          message: "Cancel Order",
-          description: res.EM || "Your order status has been updated to cancelled.",
-        });
-        setCancelModalVisible(false);
-        await fetchOrders();
-      } else {
+    await runConfirmCancel(async () => {
+      try {
+        const res = await cancelOrderApi(selectedOrder._id, cancelReason);
+        if (res && res.EC === 0) {
+          notification.success({
+            message: "Cancel Order",
+            description: res.EM || "Your order status has been updated to cancelled.",
+          });
+          setCancelModalVisible(false);
+          await fetchOrders();
+        } else {
+          notification.error({
+            message: "Cancellation Failed",
+            description: res?.EM || "Could not cancel order.",
+          });
+        }
+      } catch (error) {
+        console.error(">>> Error cancelling order:", error);
         notification.error({
-          message: "Cancellation Failed",
-          description: res?.EM || "Could not cancel order.",
+          message: "System Error",
+          description: "Could not cancel order at this moment.",
         });
       }
-    } catch (error) {
-      console.error(">>> Error cancelling order:", error);
-      notification.error({
-        message: "System Error",
-        description: "Could not cancel order at this moment.",
-      });
-    } finally {
-      setSubmittingCancel(false);
-    }
+    });
   };
 
   const handleReturnRequest = () => {
@@ -161,31 +162,30 @@ const OrdersPage = () => {
 
   const handleConfirmReturn = async () => {
     if (!selectedOrder) return;
-    setSubmittingReturn(true);
-    try {
-      const res = await requestReturnOrderApi(selectedOrder._id, returnReason);
-      if (res && res.EC === 0) {
-        notification.success({
-          message: "Return Request",
-          description: res.EM || "Return request has been sent to the shop.",
-        });
-        setReturnModalVisible(false);
-        await fetchOrders();
-      } else {
+    await runConfirmReturn(async () => {
+      try {
+        const res = await requestReturnOrderApi(selectedOrder._id, returnReason);
+        if (res && res.EC === 0) {
+          notification.success({
+            message: "Return Request",
+            description: res.EM || "Return request has been sent to the shop.",
+          });
+          setReturnModalVisible(false);
+          await fetchOrders();
+        } else {
+          notification.error({
+            message: "Return Request Failed",
+            description: res?.EM || "Could not send return request.",
+          });
+        }
+      } catch (error) {
+        console.error(">>> Error requesting return:", error);
         notification.error({
-          message: "Return Request Failed",
-          description: res?.EM || "Could not send return request.",
+          message: "System Error",
+          description: "Could not send return request at this moment.",
         });
       }
-    } catch (error) {
-      console.error(">>> Error requesting return:", error);
-      notification.error({
-        message: "System Error",
-        description: "Could not send return request at this moment.",
-      });
-    } finally {
-      setSubmittingReturn(false);
-    }
+    });
   };
 
   const handleConfirmReceipt = () => {
@@ -197,7 +197,7 @@ const OrdersPage = () => {
       okText: "Yes, Received",
       cancelText: "Cancel",
       okButtonProps: { className: "bg-emerald-700 hover:bg-emerald-800 border-none text-white font-bold" },
-      onOk: async () => {
+      onOk: () => runConfirmReceipt(async () => {
         try {
           const res = await receiveOrderApi(selectedOrder._id);
           if (res && res.EC === 0) {
@@ -219,7 +219,7 @@ const OrdersPage = () => {
             description: "Failed to confirm receipt at this time.",
           });
         }
-      }
+      })
     });
   };
 
@@ -448,6 +448,8 @@ const OrdersPage = () => {
                         type="primary"
                         size="large"
                         onClick={handleConfirmReceipt}
+                        loading={submittingReceipt}
+                        disabled={submittingReceipt}
                         className="font-bold !bg-emerald-700 hover:!bg-emerald-800 border-none text-white animate-pulse"
                       >
                         Confirm Receipt
