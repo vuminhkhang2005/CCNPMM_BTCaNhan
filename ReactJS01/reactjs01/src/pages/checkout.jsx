@@ -123,6 +123,8 @@ const CheckoutPage = () => {
       },
       items: cart.items.map((item) => ({
         productId: item.productId,
+        variantId: item.variantId,
+        sku: item.sku,
         slug: item.slug,
         name: item.name,
         price: item.price,
@@ -332,12 +334,12 @@ const CheckoutPage = () => {
             <h3 className="text-lg font-black text-stone-950 border-b border-stone-100 pb-3">Your Order</h3>
             <div className="divide-y divide-stone-100 max-h-60 overflow-y-auto pr-1">
               {cart.items.map((item) => (
-                <div key={`${item.productId}-${item.color}-${item.size}`} className="py-3 flex items-center gap-3">
+                <div key={`${item.variantId || item.productId}-${item.color}-${item.size}`} className="py-3 flex items-center gap-3">
                   <img src={item.image} alt={item.name} className="h-12 w-12 rounded border border-stone-100 object-cover bg-stone-50" />
                   <div className="flex-1 min-w-0">
                     <h4 className="text-sm font-bold text-stone-950 truncate">{item.name}</h4>
                     <p className="text-xs text-stone-500 font-semibold">
-                      Color: {item.color} | Size: {item.size} | Qty: {item.quantity}
+                      Color: {item.color} | Size: {item.size} | Qty: {item.quantity}{item.sku ? ` | SKU: ${item.sku}` : ""}
                     </p>
                   </div>
                   <div className="text-sm font-bold text-stone-950">

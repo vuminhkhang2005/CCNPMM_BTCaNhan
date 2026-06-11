@@ -409,12 +409,12 @@ const OrdersPage = () => {
                   <h3 className="text-sm font-bold uppercase tracking-wider text-stone-500">Product List</h3>
                   <div className="divide-y divide-stone-100 rounded border border-stone-200 px-4 bg-stone-50/20">
                     {selectedOrder.items.map((item) => (
-                      <div key={`${item.productId}-${item.color}-${item.size}`} className="py-3.5 flex items-center gap-4">
+                      <div key={`${item.variantId || item.productId}-${item.color}-${item.size}`} className="py-3.5 flex items-center gap-4">
                         <img src={item.image} alt={item.name} className="h-12 w-12 rounded object-cover border border-stone-100 bg-stone-50" />
                         <div className="flex-1 min-w-0">
                           <h4 className="text-sm font-bold text-stone-950 truncate">{item.name}</h4>
                           <p className="text-xs text-stone-500 font-semibold mt-1">
-                            Color: {item.color} | Size: {item.size} | Qty: {item.quantity}
+                            Color: {item.color} | Size: {item.size} | Qty: {item.quantity}{item.sku ? ` | SKU: ${item.sku}` : ""}
                           </p>
                           {Number(selectedOrder.status) === 9 && (
                             <Link to={`/products/${item.slug}`} className="mt-1 inline-flex text-xs font-bold text-emerald-700 hover:text-emerald-950">

@@ -2,6 +2,8 @@ const couponService = require("./couponService");
 const userRepository = require("../repositories/userRepository");
 const cartRepository = require("../repositories/cartRepository");
 const orderRepository = require("../repositories/orderRepository");
+const productRepository = require("../repositories/productRepository");
+const { findVariant, prepareProductForStorage } = require("../utils/productVariants");
 
 if (!global.mockOrders) {
     global.mockOrders = [];
@@ -160,6 +162,110 @@ const getOrderSubtotal = (items = []) => items.reduce((sum, item) => (
     sum + Number(item.price || 0) * Number(item.quantity || 0)
 ), 0);
 
+const normalizeFallbackOrderItems = (items = []) => items.map((item) => ({
+    ...item,
+    productId: Number(item.productId),
+    variantId: item.variantId || `${item.slug}-${item.color}-${item.size}`,
+    sku: item.sku || `${item.slug}-${item.color}-${item.size}`.toUpperCase(),
+    price: Number(item.price || 0),
+    size: Number(item.size),
+    quantity: Number(item.quantity || 0),
+}));
+
+const buildOrderItemFromVariant = (product, variant, quantity) => ({
+    productId: Number(product.id),
+    variantId: variant.variantId,
+    sku: variant.sku,
+    slug: product.slug,
+    name: product.name,
+    price: Number(variant.price || product.price),
+    color: variant.color,
+    size: Number(variant.size),
+    quantity,
+    image: variant.image || variant.images?.[0] || product.images?.[0],
+});
+
+const resolveOrderItemsFromProducts = async (items = []) => {
+    const resolvedItems = [];
+
+    for (const item of items) {
+        const quantity = Number(item.quantity);
+        if (!Number.isInteger(quantity) || quantity <= 0) {
+            return { error: { EC: 10, EM: "Invalid item quantity" } };
+        }
+
+        const product = item.productId
+            ? await productRepository.findByIdNumber(item.productId)
+            : await productRepository.findBySlug(item.slug);
+
+        if (!product) {
+            return { error: { EC: 11, EM: "Product not found while creating order" } };
+        }
+
+        const productData = prepareProductForStorage(product.toObject());
+        const variant = findVariant(productData, {
+            variantId: item.variantId,
+            color: item.color,
+            size: item.size,
+        });
+
+        if (!variant || variant.isActive === false) {
+            return { error: { EC: 12, EM: "Product variant not found while creating order" } };
+        }
+
+        resolvedItems.push(buildOrderItemFromVariant(productData, variant, quantity));
+    }
+
+    return { items: resolvedItems };
+};
+
+const rollbackReservedStock = async (items = []) => {
+    await Promise.allSettled(items.map((item) => productRepository.releaseVariantStock({
+        productId: item.productId,
+        variantId: item.variantId,
+        quantity: item.quantity,
+    })));
+};
+
+const reserveOrderStock = async (items = []) => {
+    const reservedItems = [];
+
+    for (const item of items) {
+        const result = await productRepository.reserveVariantStock({
+            productId: item.productId,
+            variantId: item.variantId,
+            quantity: item.quantity,
+        });
+
+        if (result.modifiedCount === 0) {
+            await rollbackReservedStock(reservedItems);
+            return {
+                error: {
+                    EC: 13,
+                    EM: `Not enough stock for ${item.name} - ${item.color} size ${item.size}`,
+                },
+            };
+        }
+
+        reservedItems.push(item);
+    }
+
+    return { reservedItems };
+};
+
+const releaseOrderStockIfNeeded = async (order) => {
+    if (!order || order.stockReleased) return;
+
+    const releasableItems = (order.items || []).filter((item) => item.variantId && Number(item.quantity) > 0);
+    if (releasableItems.length === 0) {
+        order.stockReleased = true;
+        return;
+    }
+
+    await rollbackReservedStock(releasableItems);
+    order.stockReleased = true;
+};
+
 const resolveOrderPricing = async ({ email, user, subtotal, couponCode, pointsRequested }) => {
     let coupon = null;
     let couponDiscount = 0;
@@ -229,10 +335,11 @@ const createOrderService = async (email, orderData) => {
         if (!customerInfo || !items || !items.length || !paymentMethod) {
             return serviceResponse(400, { EC: 1, EM: "Missing required order information" });
         }
-        const subtotalAmount = getOrderSubtotal(items);
 
         if (!global.dbConnected) {
             const user = getMockUser(email);
+            const normalizedItems = normalizeFallbackOrderItems(items);
+            const subtotalAmount = getOrderSubtotal(normalizedItems);
             const pricing = await resolveOrderPricing({
                 email,
                 user,
@@ -249,7 +356,7 @@ const createOrderService = async (email, orderData) => {
                 userId: "mock_user_id",
                 userEmail: email,
                 customerInfo,
-                items,
+                items: normalizedItems,
                 subtotalAmount: pricing.subtotalAmount,
                 discountAmount: pricing.discountAmount,
                 couponCode: pricing.couponCode,
@@ -295,6 +402,13 @@ const createOrderService = async (email, orderData) => {
         if (!user) {
             return serviceResponse(404, { EC: 1, EM: "User not found" });
         }
+
+        const resolvedOrderItems = await resolveOrderItemsFromProducts(items);
+        if (resolvedOrderItems.error) {
+            return serviceResponse(400, resolvedOrderItems.error);
+        }
+
+        const subtotalAmount = getOrderSubtotal(resolvedOrderItems.items);
         const pricing = await resolveOrderPricing({
             email,
             user,
@@ -306,27 +420,40 @@ const createOrderService = async (email, orderData) => {
             return serviceResponse(400, pricing.error);
         }
 
-        const order = await orderRepository.create({
-            userId: user._id,
-            customerInfo,
-            items,
-            subtotalAmount: pricing.subtotalAmount,
-            discountAmount: pricing.discountAmount,
-            couponCode: pricing.couponCode,
-            couponDiscount: pricing.couponDiscount,
-            pointsUsed: pricing.pointsUsed,
-            pointsDiscount: pricing.pointsDiscount,
-            totalAmount: pricing.totalAmount,
-            paymentMethod,
-            paymentStatus: paymentStatus || "Pending",
-            status: 1,
-            statusHistory: [{
-                action: "create-order",
-                toStatus: ORDER_STATUS.NEW,
-                note: "Order created",
-                actorEmail: email,
-            }],
-        });
+        const reservation = await reserveOrderStock(resolvedOrderItems.items);
+        if (reservation.error) {
+            return serviceResponse(409, reservation.error);
+        }
+
+        let order;
+        try {
+            order = await orderRepository.create({
+                userId: user._id,
+                customerInfo,
+                items: resolvedOrderItems.items,
+                subtotalAmount: pricing.subtotalAmount,
+                discountAmount: pricing.discountAmount,
+                couponCode: pricing.couponCode,
+                couponDiscount: pricing.couponDiscount,
+                pointsUsed: pricing.pointsUsed,
+                pointsDiscount: pricing.pointsDiscount,
+                totalAmount: pricing.totalAmount,
+                paymentMethod,
+                paymentStatus: paymentStatus || "Pending",
+                status: 1,
+                stockReleased: false,
+                statusHistory: [{
+                    action: "create-order",
+                    toStatus: ORDER_STATUS.NEW,
+                    note: "Order created",
+                    actorEmail: email,
+                }],
+            });
+        } catch (error) {
+            await rollbackReservedStock(reservation.reservedItems);
+            throw error;
+        }
+
         if (pricing.pointsUsed > 0) {
             user.points = Number(user.points || 0) - pricing.pointsUsed;
             await userRepository.save(user);
@@ -585,6 +712,7 @@ const cancelOrderService = async (id, email, reason) => {
             order.status = 6;
             order.cancelReason = reason || "Customer cancelled order";
             order.cancelRequested = false;
+            await releaseOrderStockIfNeeded(order);
             appendStatusHistory(order, {
                 action: "customer-cancel",
                 fromStatus: currentStatus,
@@ -739,6 +867,10 @@ const updateOrderStatusService = async (id, email, role, updateData = {}) => {
         const flowError = applyAdminOrderFlowUpdate(order, updateData, email);
         if (flowError) {
             return serviceResponse(flowError.statusCode, flowError.data);
+        }
+
+        if ([ORDER_STATUS.CANCELLED, ORDER_STATUS.RETURNED].includes(Number(order.status))) {
+            await releaseOrderStockIfNeeded(order);
         }
 
         await orderRepository.save(order);

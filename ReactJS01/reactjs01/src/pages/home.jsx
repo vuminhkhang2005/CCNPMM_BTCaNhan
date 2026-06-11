@@ -30,7 +30,7 @@ const ProductCard = ({ product }) => (
   <article className="group overflow-hidden rounded-md border border-stone-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg">
     <Link to={`/products/${product.slug}`} className="block">
       <div className="relative aspect-[4/3] overflow-hidden bg-stone-100">
-        <img src={product.images[0]} alt={product.name} className="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
+        <img src={product.images?.[0]} alt={product.name} className="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
         <div className="absolute left-3 top-3 flex flex-wrap gap-2">
           {product.discount > 0 && <span className="rounded-md bg-rose-600 px-2 py-1 text-xs font-bold text-white">-{product.discount}%</span>}
           {product.isNew && <span className="rounded-md bg-sky-600 px-2 py-1 text-xs font-bold text-white">New</span>}

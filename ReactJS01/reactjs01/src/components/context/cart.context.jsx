@@ -52,7 +52,7 @@ export const CartWrapper = ({ children }) => {
       return false;
     }
 
-    return runCartMutation(`add:${item.productId}:${item.color}:${item.size}`, async () => {
+    return runCartMutation(`add:${item.variantId || item.productId}:${item.color}:${item.size}`, async () => {
       try {
         const res = await addToCartApi(item);
         if (res && res.EC === 0) {
@@ -79,10 +79,16 @@ export const CartWrapper = ({ children }) => {
     });
   };
 
-  const updateCartItem = async (productId, color, size, quantity) => {
-    return runCartMutation(`update:${productId}:${color}:${size}`, async () => {
+  const updateCartItem = async (item, quantity) => {
+    return runCartMutation(`update:${item.variantId || item.productId}:${item.color}:${item.size}`, async () => {
       try {
-        const res = await updateCartItemApi({ productId, color, size, quantity });
+        const res = await updateCartItemApi({
+          productId: item.productId,
+          variantId: item.variantId,
+          color: item.color,
+          size: item.size,
+          quantity,
+        });
         if (res && res.EC === 0) {
           setCart(res.cart);
           return true;
@@ -95,10 +101,15 @@ export const CartWrapper = ({ children }) => {
     });
   };
 
-  const removeFromCart = async (productId, color, size) => {
-    return runCartMutation(`remove:${productId}:${color}:${size}`, async () => {
+  const removeFromCart = async (item) => {
+    return runCartMutation(`remove:${item.variantId || item.productId}:${item.color}:${item.size}`, async () => {
       try {
-        const res = await removeFromCartApi({ productId, color, size });
+        const res = await removeFromCartApi({
+          productId: item.productId,
+          variantId: item.variantId,
+          color: item.color,
+          size: item.size,
+        });
         if (res && res.EC === 0) {
           setCart(res.cart);
           notification.success({

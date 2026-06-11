@@ -1,5 +1,6 @@
 const categoryRepository = require("../repositories/categoryRepository");
 const productRepository = require("../repositories/productRepository");
+const { prepareProductForStorage } = require("../utils/productVariants");
 
 const categories = [
     { id: "road", name: "Road running", description: "Cushioned and durable shoes for city roads." },
@@ -391,6 +392,24 @@ const seedData = async () => {
             console.log("Seeding products...");
             await productRepository.insertMany(products);
             console.log("Products seeded successfully.");
+        } else {
+            const existingProducts = await productRepository.findAll();
+            let migratedCount = 0;
+
+            for (const product of existingProducts) {
+                const preparedProduct = prepareProductForStorage(product.toObject());
+                product.variants = preparedProduct.variants;
+                product.colors = preparedProduct.colors;
+                product.sizes = preparedProduct.sizes;
+                product.images = preparedProduct.images;
+                product.stock = preparedProduct.stock;
+                await productRepository.save(product);
+                migratedCount += 1;
+            }
+
+            if (migratedCount > 0) {
+                console.log(`Product variants verified for ${migratedCount} products.`);
+            }
         }
     } catch (error) {
         console.error(">>> Error seeding database:", error);

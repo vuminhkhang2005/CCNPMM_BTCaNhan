@@ -1,4 +1,5 @@
 const Product = require("../models/product");
+const { prepareProductForStorage } = require("../utils/productVariants");
 
 const buildMongoQuery = (query = {}) => {
     const mongoQuery = {};
@@ -89,7 +90,9 @@ const countByFilters = (query = {}) => Product.countDocuments(buildMongoQuery(qu
 
 const countAll = () => Product.countDocuments();
 
-const insertMany = (products) => Product.insertMany(products);
+const insertMany = (products) => Product.insertMany(products.map(prepareProductForStorage));
+
+const findAll = () => Product.find({});
 
 const findByFilters = ({ query = {}, skip = 0, limit = 8 }) => Product.find(buildMongoQuery(query))
     .sort(getMongoSort(query.sort))
@@ -124,10 +127,45 @@ const findSimilar = ({ category, excludedSlug, limit = 4 }) => Product.find({
 
 const save = (product) => product.save();
 
+const reserveVariantStock = ({ productId, variantId, quantity }) => Product.updateOne(
+    {
+        id: Number(productId),
+        variants: {
+            $elemMatch: {
+                variantId,
+                stock: { $gte: Number(quantity) },
+                isActive: { $ne: false },
+            },
+        },
+    },
+    {
+        $inc: {
+            "variants.$.stock": -Number(quantity),
+            stock: -Number(quantity),
+            sold: Number(quantity),
+        },
+    },
+);
+
+const releaseVariantStock = ({ productId, variantId, quantity }) => Product.updateOne(
+    {
+        id: Number(productId),
+        "variants.variantId": variantId,
+    },
+    {
+        $inc: {
+            "variants.$.stock": Number(quantity),
+            stock: Number(quantity),
+            sold: -Number(quantity),
+        },
+    },
+);
+
 module.exports = {
     countByFilters,
     countAll,
     insertMany,
+    findAll,
     findByFilters,
     findAllByFilters,
     findRanking,
@@ -135,5 +173,7 @@ module.exports = {
     findByIdNumber,
     findByIds,
     findSimilar,
+    reserveVariantStock,
+    releaseVariantStock,
     save,
 };
