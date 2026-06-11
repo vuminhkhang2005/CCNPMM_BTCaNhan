@@ -5,6 +5,7 @@ import { ArrowLeftOutlined, MailOutlined, LockOutlined } from "@ant-design/icons
 import { AuthContext } from "../components/context/auth";
 import useLockedAsyncAction from "../hooks/useLockedAsyncAction";
 import { loginApi } from "../util/api";
+import { setAccessToken } from "../util/authToken";
 import authBanner from "../assets/auth_banner.png";
 
 const LoginPage = () => {
@@ -16,7 +17,7 @@ const LoginPage = () => {
     await runSubmit(async () => {
       const res = await loginApi(email, password);
       if (res?.EC === 0) {
-        localStorage.setItem("access_token", res.access_token);
+        setAccessToken(res.access_token);
         setAuth({
           isAuthenticated: true,
           user: {

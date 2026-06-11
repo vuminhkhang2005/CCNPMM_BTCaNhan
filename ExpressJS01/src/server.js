@@ -5,11 +5,21 @@ const cors = require("cors");
 const apiRoutes = require("./routes/api");
 const connection = require("./config/database");
 const { apiRateLimiter } = require("./middleware/rateLimit");
+const { getAllowedOrigins } = require("./middleware/originGuard");
 
 const app = express();
 const port = process.env.PORT || 8888;
 
-app.use(cors());
+app.use(cors({
+    origin(origin, callback) {
+        if (!origin || getAllowedOrigins().has(origin)) {
+            return callback(null, true);
+        }
+
+        return callback(null, false);
+    },
+    credentials: true,
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

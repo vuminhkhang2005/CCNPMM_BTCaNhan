@@ -4,6 +4,8 @@ import { HomeOutlined, LoginOutlined, LogoutOutlined, UserOutlined, UsergroupAdd
 import { AuthContext } from "../context/auth";
 import { CartContext } from "../context/cart";
 import { Badge } from "antd";
+import { logoutApi } from "../../util/api";
+import { clearAccessToken } from "../../util/authToken";
 
 const Header = () => {
   const navigate = useNavigate();
@@ -11,8 +13,12 @@ const Header = () => {
   const { auth, setAuth } = useContext(AuthContext);
   const { cartCount } = useContext(CartContext);
 
-  const handleLogout = () => {
-    localStorage.removeItem("access_token");
+  const handleLogout = async () => {
+    try {
+      await logoutApi();
+    } finally {
+      clearAccessToken();
+    }
     setAuth({ isAuthenticated: false, user: { email: "", name: "", role: "", phone: "", address: "", isActive: true } });
     navigate("/");
   };

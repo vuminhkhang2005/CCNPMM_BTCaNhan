@@ -11,6 +11,8 @@ const {
     updateProfile,
     forgotPassword,
     resetPassword,
+    refreshToken,
+    logout,
 } = require("../controllers/userController");
 const {
     getProducts,
@@ -53,11 +55,14 @@ const {
 const auth = require("../middleware/auth");
 const { requireAdmin } = require("../middleware/rbac");
 const { authRateLimiter } = require("../middleware/rateLimit");
+const { requireTrustedOrigin } = require("../middleware/originGuard");
 
 const routerAPI = express.Router();
 
 routerAPI.post("/register", authRateLimiter, createUser);
-routerAPI.post("/login", authRateLimiter, handleLogin);
+routerAPI.post("/login", authRateLimiter, requireTrustedOrigin, handleLogin);
+routerAPI.post("/refresh-token", requireTrustedOrigin, refreshToken);
+routerAPI.post("/logout", requireTrustedOrigin, logout);
 routerAPI.post("/forgot-password", authRateLimiter, forgotPassword);
 routerAPI.post("/reset-password", authRateLimiter, resetPassword);
 

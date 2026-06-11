@@ -9,7 +9,28 @@ const {
     updateProfileService,
     forgotPasswordService,
     resetPasswordService,
+    refreshTokenService,
+    REFRESH_COOKIE_NAME,
+    getRefreshCookieOptions,
+    getClearRefreshCookieOptions,
 } = require("../services/userService");
+
+const getCookieValue = (req, name) => {
+    const cookieHeader = req.headers.cookie || "";
+    const cookies = cookieHeader.split(";").map((cookie) => cookie.trim()).filter(Boolean);
+    const cookie = cookies.find((item) => item.startsWith(`${name}=`));
+    if (!cookie) return "";
+    return decodeURIComponent(cookie.slice(name.length + 1));
+};
+
+const sendAuthResponse = (res, data, statusCode = 200) => {
+    if (data.refresh_token) {
+        res.cookie(REFRESH_COOKIE_NAME, data.refresh_token, getRefreshCookieOptions());
+    }
+
+    const { refresh_token, ...publicData } = data;
+    return res.status(statusCode).json(publicData);
+};
 
 const createUser = async (req, res) => {
     const { name, email, password } = req.body;
@@ -20,7 +41,23 @@ const createUser = async (req, res) => {
 const handleLogin = async (req, res) => {
     const { email, password } = req.body;
     const data = await loginService(email, password);
-    return res.status(200).json(data);
+    return sendAuthResponse(res, data);
+};
+
+const refreshToken = async (req, res) => {
+    const token = getCookieValue(req, REFRESH_COOKIE_NAME);
+    const data = await refreshTokenService(token);
+    if (data.EC !== 0) {
+        res.clearCookie(REFRESH_COOKIE_NAME, getClearRefreshCookieOptions());
+        return res.status(401).json(data);
+    }
+
+    return sendAuthResponse(res, data);
+};
+
+const logout = async (req, res) => {
+    res.clearCookie(REFRESH_COOKIE_NAME, getClearRefreshCookieOptions());
+    return res.status(200).json({ EC: 0, EM: "Logged out successfully" });
 };
 
 const getUser = async (req, res) => {
@@ -58,7 +95,7 @@ const activateUser = async (req, res) => {
 
 const updateProfile = async (req, res) => {
     const data = await updateProfileService(req.user.email, req.body);
-    return res.status(data.EC === 0 ? 200 : 400).json(data);
+    return sendAuthResponse(res, data, data.EC === 0 ? 200 : 400);
 };
 
 const forgotPassword = async (req, res) => {
@@ -85,4 +122,6 @@ module.exports = {
     updateProfile,
     forgotPassword,
     resetPassword,
+    refreshToken,
+    logout,
 };

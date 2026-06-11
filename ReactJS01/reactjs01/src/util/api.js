@@ -2,6 +2,7 @@ import axios from "./axios.customize";
 
 const createUserApi = (name, email, password) => axios.post("/v1/api/register", { name, email, password });
 const loginApi = (email, password) => axios.post("/v1/api/login", { email, password });
+const logoutApi = () => axios.post("/v1/api/logout");
 const getUserApi = () => axios.get("/v1/api/user");
 const getAdminUsersApi = () => axios.get("/v1/api/admin/users");
 const createManagedUserApi = (payload) => axios.post("/v1/api/admin/users", payload);
@@ -45,6 +46,7 @@ const updateOrderStatusApi = (id, payload) => axios.put(`/v1/api/orders/${id}/st
 export {
   createUserApi,
   loginApi,
+  logoutApi,
   getUserApi,
   getAdminUsersApi,
   createManagedUserApi,

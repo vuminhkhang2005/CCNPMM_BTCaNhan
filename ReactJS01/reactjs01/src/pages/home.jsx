@@ -3,7 +3,8 @@ import { Link, useNavigate } from "react-router-dom";
 import { notification, Spin } from "antd";
 import { EyeOutlined, FilterOutlined, LeftOutlined, LogoutOutlined, ReloadOutlined, RightOutlined, SearchOutlined, ShoppingCartOutlined, StarFilled } from "@ant-design/icons";
 import { AuthContext } from "../components/context/auth";
-import { getFavoritesApi, getProductRankingApi, getProductsApi, getProductsByCategoryApi, getViewedProductsApi } from "../util/api";
+import { getFavoritesApi, getProductRankingApi, getProductsApi, getProductsByCategoryApi, getViewedProductsApi, logoutApi } from "../util/api";
+import { clearAccessToken } from "../util/authToken";
 
 const initialFilters = {
   keyword: "",
@@ -168,8 +169,12 @@ const HomePage = () => {
   const [viewedProducts, setViewedProducts] = useState([]);
   const loadMoreRef = useRef(null);
 
-  const handleLogout = () => {
-    localStorage.removeItem("access_token");
+  const handleLogout = async () => {
+    try {
+      await logoutApi();
+    } finally {
+      clearAccessToken();
+    }
     setAuth({ isAuthenticated: false, user: { email: "", name: "", role: "" } });
     navigate("/");
   };

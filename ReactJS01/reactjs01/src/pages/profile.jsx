@@ -4,6 +4,7 @@ import { IdcardOutlined, LockOutlined, MailOutlined, PhoneOutlined, UserOutlined
 import { AuthContext } from "../components/context/auth";
 import useLockedAsyncAction from "../hooks/useLockedAsyncAction";
 import { updateProfileApi } from "../util/api";
+import { setAccessToken } from "../util/authToken";
 
 const ProfilePage = () => {
   const { auth, setAuth } = useContext(AuthContext);
@@ -38,7 +39,7 @@ const ProfilePage = () => {
       const res = await updateProfileApi(payload);
       if (res?.EC === 0) {
         if (res.access_token) {
-          localStorage.setItem("access_token", res.access_token);
+          setAccessToken(res.access_token);
         }
         setAuth({
           isAuthenticated: true,

@@ -4,12 +4,14 @@ import { Spin } from "antd";
 import Header from "./components/layout/header";
 import { AuthContext } from "./components/context/auth";
 import { getAccountApi } from "./util/api";
+import { clearAccessToken, clearLegacyStoredAccessToken } from "./util/authToken";
 
 function App() {
   const { setAuth, appLoading, setAppLoading } = useContext(AuthContext);
 
   useEffect(() => {
     const fetchAccount = async () => {
+      clearLegacyStoredAccessToken();
       setAppLoading(true);
       try {
         const res = await getAccountApi();
@@ -27,7 +29,7 @@ function App() {
             },
           });
         } else if (res?.EC === 2) {
-          localStorage.removeItem("access_token");
+          clearAccessToken();
         }
       } finally {
         setAppLoading(false);

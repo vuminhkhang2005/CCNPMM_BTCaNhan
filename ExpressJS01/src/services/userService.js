@@ -10,6 +10,10 @@ const saltRounds = 10;
 let transporter = null;
 
 const USER_ROLES = Object.freeze(["USER", "ADMIN"]);
+const REFRESH_COOKIE_NAME = "refresh_token";
+const ACCESS_TOKEN_EXPIRE = process.env.JWT_EXPIRE || "15m";
+const REFRESH_TOKEN_EXPIRE = process.env.JWT_REFRESH_EXPIRE || "7d";
+const REFRESH_TOKEN_MAX_AGE_MS = Number(process.env.JWT_REFRESH_MAX_AGE_MS) || 7 * 24 * 60 * 60 * 1000;
 
 const generateMockId = () => Array.from(
     { length: 24 },
@@ -41,8 +45,41 @@ const buildAuthPayload = (user) => ({
 });
 
 const signAccessToken = (user) => jwt.sign(buildAuthPayload(user), process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRE || "2h",
+    expiresIn: ACCESS_TOKEN_EXPIRE,
 });
+
+const signRefreshToken = (user) => jwt.sign({
+    ...buildAuthPayload(user),
+    tokenType: "refresh",
+}, process.env.JWT_SECRET, {
+    expiresIn: REFRESH_TOKEN_EXPIRE,
+});
+
+const issueAuthTokens = (user) => ({
+    access_token: signAccessToken(user),
+    refresh_token: signRefreshToken(user),
+});
+
+const getRefreshCookieOptions = () => ({
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/v1/api",
+    maxAge: REFRESH_TOKEN_MAX_AGE_MS,
+});
+
+const getClearRefreshCookieOptions = () => {
+    const { maxAge, ...options } = getRefreshCookieOptions();
+    return options;
+};
+
+const verifyRefreshToken = (refreshToken) => {
+    const decoded = jwt.verify(refreshToken, process.env.JWT_SECRET);
+    if (decoded.tokenType !== "refresh") {
+        throw new Error("Invalid token type");
+    }
+    return decoded;
+};
 
 const normalizeRole = (role) => (USER_ROLES.includes(role) ? role : "USER");
 
@@ -221,10 +258,10 @@ const loginService = async (email, password) => {
                 return { EC: 2, EM: "Email or password is incorrect (Memory Fallback)" };
             }
             const payload = buildAuthPayload(user);
-            const access_token = signAccessToken(user);
+            const tokens = issueAuthTokens(user);
             return {
                 EC: 0,
-                access_token,
+                ...tokens,
                 user: payload,
             };
         }
@@ -245,11 +282,11 @@ const loginService = async (email, password) => {
         }
 
         const payload = buildAuthPayload(user);
-        const access_token = signAccessToken(user);
+        const tokens = issueAuthTokens(user);
 
         return {
             EC: 0,
-            access_token,
+            ...tokens,
             user: payload,
         };
     } catch (error) {
@@ -291,6 +328,31 @@ const getAccountService = async (email) => {
     } catch (error) {
         console.log(">>> Error at getAccountService: ", error);
         return { EC: -1, EM: "System error" };
+    }
+};
+
+const refreshTokenService = async (refreshToken) => {
+    try {
+        if (!refreshToken) {
+            return { EC: 1, EM: "Missing refresh token" };
+        }
+
+        const decoded = verifyRefreshToken(refreshToken);
+        const user = !global.dbConnected
+            ? global.mockUsers.find((item) => item.email === decoded.email)
+            : await userRepository.findByEmail(decoded.email);
+
+        if (!user || user.isActive === false) {
+            return { EC: 2, EM: "Account is deactivated or no longer exists" };
+        }
+
+        return {
+            EC: 0,
+            ...issueAuthTokens(user),
+            user: buildAuthPayload(user),
+        };
+    } catch (error) {
+        return { EC: 3, EM: "Refresh token is expired or invalid" };
     }
 };
 
@@ -500,7 +562,7 @@ const updateProfileService = async (email, payload = {}) => {
                 EC: 0,
                 EM: "Profile updated successfully (Memory Fallback)",
                 user: sanitizeUser(user),
-                access_token: signAccessToken(user),
+                ...issueAuthTokens(user),
             };
         }
 
@@ -533,7 +595,7 @@ const updateProfileService = async (email, payload = {}) => {
             EC: 0,
             EM: "Profile updated successfully",
             user: sanitizeUser(user),
-            access_token: signAccessToken(user),
+            ...issueAuthTokens(user),
         };
     } catch (error) {
         console.log(">>> Error at updateProfileService: ", error);
@@ -645,4 +707,8 @@ module.exports = {
     updateProfileService,
     forgotPasswordService,
     resetPasswordService,
+    refreshTokenService,
+    REFRESH_COOKIE_NAME,
+    getRefreshCookieOptions,
+    getClearRefreshCookieOptions,
 };
