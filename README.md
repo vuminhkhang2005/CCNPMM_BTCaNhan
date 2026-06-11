@@ -11,6 +11,17 @@ Dự án được tích hợp cơ chế tự động chuyển đổi thông minh
 
 ---
 
+## 🔐 Xác thực và bảo mật phiên đăng nhập
+Hệ thống dùng mô hình hybrid token để giảm rủi ro XSS nhưng vẫn giữ trải nghiệm đăng nhập mượt:
+* **Access token**: JWT sống ngắn hạn, mặc định `15m`, chỉ lưu trong memory của React app. Frontend không còn lưu access token mới vào `localStorage`.
+* **Refresh token**: JWT sống dài hơn, mặc định `7d`, được server set bằng cookie `httpOnly`, `sameSite=strict`. JavaScript phía client không đọc được cookie này.
+* **Tự động refresh phiên**: Khi API trả `401`, axios sẽ gọi `/v1/api/refresh-token` với `withCredentials: true`, nhận access token mới rồi retry request ban đầu.
+* **Logout an toàn hơn**: `/v1/api/logout` xóa refresh cookie phía server; frontend cũng xóa access token trong memory.
+* **Chống CSRF cho endpoint dùng cookie**: Các route nhạy cảm như login, refresh token và logout kiểm tra `Origin` bằng allowlist từ `CLIENT_URL`, `FRONTEND_URL`, `CORS_ORIGIN` và localhost dev ports.
+* **Dọn token cũ**: Frontend tự xóa `access_token` cũ trong `localStorage` nếu còn sót từ phiên bản trước.
+
+---
+
 ## 🔑 Tài khoản thử nghiệm mặc định (Chế độ Fallback RAM)
 Nếu bạn đang chạy ứng dụng ở chế độ giả lập không có MongoDB, bạn có thể sử dụng trực tiếp các tài khoản được cài đặt sẵn sau:
 
@@ -33,6 +44,16 @@ Nếu bạn đang chạy ứng dụng ở chế độ giả lập không có Mon
    npm install
    ```
 3. Tạo file `.env` (đã cấu hình sẵn, mặc định kết nối tới `mongodb://localhost:27017/fullstack02`).
+   Các biến quan trọng:
+   ```env
+   PORT=8080
+   MONGO_DB_URL=mongodb://localhost:27017/fullstack02
+   JWT_SECRET=EXPRESSJS01_SECRET_KEY
+   JWT_EXPIRE=15m
+   JWT_REFRESH_EXPIRE=7d
+   JWT_REFRESH_MAX_AGE_MS=604800000
+   CLIENT_URL=http://localhost:5173
+   ```
 4. Chạy server ở chế độ phát triển:
    ```bash
    npm run dev
@@ -57,11 +78,14 @@ Nếu bạn đang chạy ứng dụng ở chế độ giả lập không có Mon
 ---
 
 ## 🛒 Quy trình các chức năng chính đã triển khai
-1. **Giỏ hàng**: Chọn kích thước, màu sắc và số lượng trên trang chi tiết sản phẩm. Số lượng giỏ hàng trên Header tự động đồng bộ.
-2. **Thanh toán**: Hỗ trợ ship COD (bắt buộc) và giả lập cổng thanh toán **Ví MoMo** (quét mã QR) cùng **VNPAY** (thẻ ngân hàng) cực kỳ trực quan.
-3. **Theo dõi hành trình đơn hàng**: 
+1. **Product Variant / SKU**: Sản phẩm được tách tồn kho theo từng tổ hợp màu sắc và kích thước. Mỗi màu có ảnh riêng, mỗi size có stock riêng, không dùng stock chung cho toàn sản phẩm.
+2. **Trang chi tiết sản phẩm**: Giao diện chọn màu, size, ảnh sản phẩm, trạng thái tồn kho và CTA mua hàng được thiết kế lại gọn hơn, dễ đọc hơn.
+3. **Giỏ hàng**: Chọn kích thước, màu sắc và số lượng theo variant trên trang chi tiết sản phẩm. Số lượng giỏ hàng trên Header tự động đồng bộ.
+4. **Thanh toán**: Hỗ trợ ship COD (bắt buộc) và giả lập cổng thanh toán **Ví MoMo** (quét mã QR) cùng **VNPAY** (thẻ ngân hàng) cực kỳ trực quan.
+5. **Theo dõi hành trình đơn hàng**:
    * Hiển thị tiến trình bằng thanh trạng thái (Steps) thời gian thực.
    * Đơn mới tự động duyệt sau 30 phút.
    * Tích hợp đồng hồ đếm ngược 30 phút để hủy trực tiếp.
    * Hỗ trợ gửi yêu cầu hủy đơn cho shop nếu đơn đang chuẩn bị (bước 3).
-4. **Quản lý shop (Admin)**: Quản trị viên duyệt tiến trình đơn và duyệt/từ chối yêu cầu hủy của khách hàng.
+6. **Chi tiết đơn hàng**: Người dùng có thể mở từng đơn để xem sản phẩm, biến thể màu/size, địa chỉ, phương thức thanh toán, trạng thái và timeline xử lý.
+7. **Quản lý shop (Admin)**: Quản trị viên duyệt tiến trình đơn và duyệt/từ chối yêu cầu hủy của khách hàng.
