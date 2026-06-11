@@ -1,14 +1,10 @@
-import { useContext, useEffect, useState } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Alert, Button, Empty, Input, Rate, Select, Spin, Tag, notification } from "antd";
 import { ArrowLeftOutlined, HeartFilled, HeartOutlined, MinusOutlined, PlusOutlined, ShoppingCartOutlined, StarFilled, TagOutlined, UserOutlined } from "@ant-design/icons";
-import { Autoplay, Navigation, Pagination } from "swiper/modules";
-import { Swiper, SwiperSlide } from "swiper/react";
-import "swiper/css";
-import "swiper/css/navigation";
-import "swiper/css/pagination";
 import { AuthContext } from "../components/context/auth";
-import { CartContext } from "../components/context/cart.context";
+import { CartContext } from "../components/context/cart";
+import useLockedAsyncAction from "../hooks/useLockedAsyncAction";
 import { createProductReviewApi, getProductDetailApi, getProductReviewsApi, toggleFavoriteApi } from "../util/api";
 
 const formatCurrency = (value) => new Intl.NumberFormat("vi-VN", {
@@ -17,18 +13,44 @@ const formatCurrency = (value) => new Intl.NumberFormat("vi-VN", {
   maximumFractionDigits: 0,
 }).format(value);
 
+const getInitialQuantity = (variant) => (Number(variant?.stock || 0) > 0 ? 1 : 0);
+
+const COLOR_HEX = {
+  black: "#1c1917",
+  blue: "#2563eb",
+  "clay orange": "#c2410c",
+  cream: "#f5f0df",
+  "earth brown": "#7c4a2d",
+  "forest green": "#166534",
+  gray: "#9ca3af",
+  green: "#16a34a",
+  lime: "#84cc16",
+  moss: "#5f6f3a",
+  "moss green": "#4d6b3c",
+  navy: "#1e3a8a",
+  "neon blue": "#0ea5e9",
+  olive: "#6b7d2f",
+  "orange red": "#ea580c",
+  red: "#dc2626",
+  sand: "#d6b985",
+  silver: "#cbd5e1",
+  white: "#ffffff",
+};
+
+const getColorHex = (color = "") => COLOR_HEX[color.toLowerCase()] || "#d6d3d1";
+
 const SimilarProductCard = ({ product }) => (
-  <article className="overflow-hidden rounded-md border border-stone-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg">
+  <article className="overflow-hidden rounded-md border border-stone-200 bg-white transition hover:-translate-y-0.5 hover:shadow-md">
     <Link to={`/products/${product.slug}`} className="block">
       <div className="aspect-[4/3] overflow-hidden bg-stone-100">
-        <img src={product.images[0]} alt={product.name} className="h-full w-full object-cover" />
+        <img src={product.images?.[0]} alt={product.name} className="h-full w-full object-cover" />
       </div>
-      <div className="space-y-2 p-4">
-        <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">{product.categoryInfo?.name}</p>
-        <h3 className="text-lg font-black text-stone-950">{product.name}</h3>
+      <div className="space-y-3 p-4">
+        <p className="text-xs font-bold uppercase text-emerald-700">{product.categoryInfo?.name}</p>
+        <h3 className="line-clamp-2 text-base font-black text-stone-950">{product.name}</h3>
         <div className="flex items-center justify-between gap-3">
           <span className="font-black text-stone-950">{formatCurrency(product.price)}</span>
-          <span className="text-sm font-bold text-amber-600"><StarFilled /> {product.rating}</span>
+          <span className="inline-flex items-center gap-1 text-sm font-bold text-amber-600"><StarFilled /> {product.rating}</span>
         </div>
       </div>
     </Link>
@@ -53,8 +75,35 @@ const ProductDetailPage = () => {
   const [reviewOrderId, setReviewOrderId] = useState("");
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState("");
-  const [favoriteLoading, setFavoriteLoading] = useState(false);
-  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [activeImage, setActiveImage] = useState("");
+  const { loading: favoriteLoading, run: runToggleFavorite } = useLockedAsyncAction();
+  const { loading: reviewSubmitting, run: runSubmitReview } = useLockedAsyncAction();
+  const { loading: addingToCart, run: runAddToCart } = useLockedAsyncAction();
+  const variants = useMemo(() => product?.variants || [], [product]);
+  const colorOptions = useMemo(() => {
+    const colorMap = new Map();
+    variants.forEach((variant) => {
+      const current = colorMap.get(variant.color) || { color: variant.color, stock: 0 };
+      colorMap.set(variant.color, {
+        color: variant.color,
+        stock: current.stock + Number(variant.stock || 0),
+      });
+    });
+    return Array.from(colorMap.values());
+  }, [variants]);
+  const sizeOptions = useMemo(() => variants
+    .filter((variant) => variant.color === selectedColor)
+    .sort((a, b) => Number(a.size) - Number(b.size)), [variants, selectedColor]);
+  const selectedVariant = useMemo(() => variants.find((variant) => (
+    variant.color === selectedColor && Number(variant.size) === Number(selectedSize)
+  )), [variants, selectedColor, selectedSize]);
+  const displayImages = useMemo(() => {
+    const images = selectedVariant?.images?.length
+      ? selectedVariant.images
+      : [selectedVariant?.image || product?.images?.[0]].filter(Boolean);
+    return images.length ? images : product?.images || [];
+  }, [product, selectedVariant]);
+  const heroImage = displayImages.includes(activeImage) ? activeImage : displayImages[0];
 
   useEffect(() => {
     if (!auth.isAuthenticated) return;
@@ -64,11 +113,14 @@ const ProductDetailPage = () => {
       try {
         const res = await getProductDetailApi(slug);
         if (res?.EC === 0) {
+          const firstVariant = (res.product.variants || []).find((variant) => Number(variant.stock) > 0)
+            || res.product.variants?.[0];
           setProduct(res.product);
           setSimilarProducts(res.similarProducts);
-          setQuantity(res.product.stock > 0 ? 1 : 0);
-          setSelectedColor(res.product.colors?.[0] || "");
-          setSelectedSize(res.product.sizes?.[0] || "");
+          setQuantity(getInitialQuantity(firstVariant));
+          setSelectedColor(firstVariant?.color || res.product.colors?.[0] || "");
+          setSelectedSize(firstVariant?.size || res.product.sizes?.[0] || "");
+          setActiveImage(firstVariant?.image || firstVariant?.images?.[0] || res.product.images?.[0] || "");
           setReviews(res.reviews || []);
           setIsFavorite(Boolean(res.isFavorite));
           setCanReview(Boolean(res.canReview));
@@ -88,8 +140,8 @@ const ProductDetailPage = () => {
 
   const decreaseQuantity = () => setQuantity((value) => Math.max(1, value - 1));
   const increaseQuantity = () => {
-    if (!product) return;
-    setQuantity((value) => Math.min(product.stock, value + 1));
+    if (!selectedVariant) return;
+    setQuantity((value) => Math.min(Number(selectedVariant.stock || 0), value + 1));
   };
 
   const refreshReviews = async () => {
@@ -102,27 +154,32 @@ const ProductDetailPage = () => {
   const handleToggleFavorite = async () => {
     if (!product) return;
 
-    setFavoriteLoading(true);
-    try {
-      const res = await toggleFavoriteApi(product.slug, {
-        productId: product.id,
-        product,
-      });
-      if (res?.EC === 0) {
-        setIsFavorite(Boolean(res.isFavorite));
-        notification.success({
-          message: "Favorites",
-          description: res.EM,
+    await runToggleFavorite(async () => {
+      try {
+        const res = await toggleFavoriteApi(product.slug, {
+          productId: product.id,
+          product,
         });
-      } else {
+        if (res?.EC === 0) {
+          setIsFavorite(Boolean(res.isFavorite));
+          notification.success({
+            message: "Favorites",
+            description: res.EM,
+          });
+        } else {
+          notification.error({
+            message: "Favorites",
+            description: res?.EM || "Could not update favorite product.",
+          });
+        }
+      } catch (error) {
+        console.error(">>> Error updating favorite:", error);
         notification.error({
           message: "Favorites",
-          description: res?.EM || "Could not update favorite product.",
+          description: "System error occurred while updating favorite product.",
         });
       }
-    } finally {
-      setFavoriteLoading(false);
-    }
+    });
   };
 
   const handleSubmitReview = async () => {
@@ -134,50 +191,67 @@ const ProductDetailPage = () => {
       return;
     }
 
-    setReviewSubmitting(true);
-    try {
-      const res = await createProductReviewApi(slug, {
-        orderId: reviewOrderId,
-        rating: reviewRating,
-        comment: reviewComment,
-      });
-      if (res?.EC === 0) {
-        notification.success({
-          message: "Review submitted",
-          description: `You received ${res.reward?.points || 0} points and coupon ${res.reward?.coupon?.code || ""}.`,
+    await runSubmitReview(async () => {
+      try {
+        const res = await createProductReviewApi(slug, {
+          orderId: reviewOrderId,
+          rating: reviewRating,
+          comment: reviewComment,
         });
-        setReviewComment("");
-        setReviewRating(5);
-        setCanReview(false);
-        setReviewableOrders([]);
-        await refreshReviews();
-      } else {
+        if (res?.EC === 0) {
+          notification.success({
+            message: "Review submitted",
+            description: `You received ${res.reward?.points || 0} points and coupon ${res.reward?.coupon?.code || ""}.`,
+          });
+          setReviewComment("");
+          setReviewRating(5);
+          setCanReview(false);
+          setReviewableOrders([]);
+          await refreshReviews();
+        } else {
+          notification.error({
+            message: "Review failed",
+            description: res?.EM || "Could not submit review.",
+          });
+        }
+      } catch (error) {
+        console.error(">>> Error submitting review:", error);
         notification.error({
           message: "Review failed",
-          description: res?.EM || "Could not submit review.",
+          description: "System error occurred while submitting review.",
         });
       }
-    } finally {
-      setReviewSubmitting(false);
-    }
+    });
   };
   const handleAddToCart = async () => {
-    if (!selectedColor || !selectedSize) {
+    if (!selectedVariant) {
       notification.warning({
         message: "Product Selection",
-        description: "Please select shoe color and size.",
+        description: "Please select an available shoe color and size.",
       });
       return;
     }
-    await addToCart({
-      productId: product.id,
-      slug: product.slug,
-      name: product.name,
-      price: product.price,
-      color: selectedColor,
-      size: Number(selectedSize),
-      quantity: Number(quantity),
-      image: product.images[0],
+
+    if (Number(selectedVariant.stock || 0) <= 0) {
+      notification.warning({
+        message: "Product Selection",
+        description: "This color and size is out of stock.",
+      });
+      return;
+    }
+    await runAddToCart(async () => {
+      await addToCart({
+        productId: product.id,
+        variantId: selectedVariant.variantId,
+        sku: selectedVariant.sku,
+        slug: product.slug,
+        name: product.name,
+        price: selectedVariant.price || product.price,
+        color: selectedVariant.color,
+        size: Number(selectedVariant.size),
+        quantity: Number(quantity),
+        image: selectedVariant.image || selectedVariant.images?.[0] || product.images?.[0],
+      });
     });
   };
 
@@ -207,195 +281,297 @@ const ProductDetailPage = () => {
     );
   }
 
-  const isOutOfStock = product.stock <= 0;
+  const selectedStock = Number(selectedVariant?.stock || 0);
+  const isOutOfStock = !selectedVariant || selectedStock <= 0;
+  const variantPrice = selectedVariant?.price || product.price;
+  const selectedSku = selectedVariant?.sku || "";
+  const stats = [
+    { label: "Rating", value: `${product.rating} / 5` },
+    { label: "Sold", value: product.sold },
+    { label: "Buyers", value: product.stats?.buyerCount || 0 },
+    { label: "Total stock", value: product.stock || 0 },
+  ];
 
   return (
-    <div className="min-h-[calc(100vh-70px)] pb-12">
+    <div className="min-h-[calc(100vh-70px)] bg-[#f7f7f4] pb-12">
       <section className="border-b border-stone-200 bg-white">
-        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-          <Link to="/" className="inline-flex items-center gap-2 text-sm font-bold text-emerald-700 hover:text-emerald-900"><ArrowLeftOutlined /> Back to product list</Link>
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6 lg:px-8">
+          <Link to="/" className="inline-flex items-center gap-2 text-sm font-bold text-stone-700 hover:text-emerald-700">
+            <ArrowLeftOutlined /> Back to product list
+          </Link>
+          {selectedSku && (
+            <span className="rounded-md border border-stone-200 px-3 py-1 text-xs font-bold text-stone-500">
+              SKU {selectedSku}
+            </span>
+          )}
         </div>
       </section>
 
-      <section className="mx-auto grid max-w-7xl gap-8 px-4 py-8 sm:px-6 lg:grid-cols-[minmax(0,520px)_minmax(0,1fr)] lg:px-8">
-        <div className="min-w-0">
-          <Swiper modules={[Navigation, Pagination, Autoplay]} navigation={product.images.length > 1} pagination={{ clickable: true }} autoplay={product.images.length > 1 ? { delay: 3200, disableOnInteraction: false } : false} loop={product.images.length > 1} className="overflow-hidden rounded-md border border-stone-200 bg-white shadow-sm">
-            {product.images.map((image) => (
-              <SwiperSlide key={image}>
-                <div className="grid h-[520px] max-h-[65vh] place-items-center bg-stone-100">
-                  <img src={image} alt={product.name} className="h-full w-full object-contain" />
-                </div>
-              </SwiperSlide>
-            ))}
-          </Swiper>
-        </div>
-
-        <div className="space-y-6">
-          <div>
-            <p className="inline-flex items-center gap-2 rounded-md bg-emerald-50 px-3 py-1 text-sm font-bold text-emerald-800"><TagOutlined /> {product.categoryInfo?.name}</p>
-            <h1 className="mt-4 text-4xl font-black leading-tight text-stone-950">{product.name}</h1>
-            <p className="mt-4 text-base leading-7 text-stone-600">{product.description}</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-3 text-sm font-semibold">
-            <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-3 py-1 text-amber-700"><StarFilled /> {product.rating} ({product.reviewCount} reviews)</span>
-            <span className="rounded-md bg-stone-100 px-3 py-1 text-stone-700">Sold {product.sold}</span>
-            <span className="rounded-md bg-stone-100 px-3 py-1 text-stone-700">{product.stats?.buyerCount || 0} buyers</span>
-            <span className="rounded-md bg-stone-100 px-3 py-1 text-stone-700">{product.stats?.commentCount ?? reviews.length} comments</span>
-            <span className="rounded-md bg-stone-100 px-3 py-1 text-stone-700">{product.stats?.favoriteCount || 0} favorites</span>
-            <span className={isOutOfStock ? "rounded-md bg-rose-50 px-3 py-1 text-rose-700" : "rounded-md bg-emerald-50 px-3 py-1 text-emerald-700"}>{isOutOfStock ? "Out of stock" : `${product.stock} in stock`}</span>
-          </div>
-          <div className="border-y border-stone-200 py-5">
-            <div className="flex flex-wrap items-end gap-4">
-              <p className="text-4xl font-black text-stone-950">{formatCurrency(product.price)}</p>
-              {product.originalPrice > product.price && <p className="pb-1 text-lg font-semibold text-stone-400 line-through">{formatCurrency(product.originalPrice)}</p>}
-              {product.discount > 0 && <span className="mb-1 rounded-md bg-rose-600 px-3 py-1 text-sm font-black text-white">-{product.discount}%</span>}
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <section className="grid gap-8 lg:grid-cols-[minmax(0,1.02fr)_minmax(420px,0.98fr)]">
+          <div className="min-w-0 lg:sticky lg:top-24 lg:self-start">
+            <div className="overflow-hidden rounded-md border border-stone-200 bg-white">
+              <div className="grid aspect-square max-h-[640px] place-items-center bg-[#efeee9]">
+                {heroImage ? (
+                  <img src={heroImage} alt={`${product.name} ${selectedColor}`} className="h-full w-full object-contain p-5 sm:p-8" />
+                ) : (
+                  <div className="text-sm font-bold text-stone-400">No image</div>
+                )}
+              </div>
             </div>
-            <p className="mt-3 text-sm font-bold text-emerald-700">{product.promotion}</p>
-          </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <p className="mb-2 text-sm font-bold text-stone-900">Colors</p>
-              <div className="flex flex-wrap gap-2">
-                {product.colors.map((color) => (
+            {displayImages.length > 1 && (
+              <div className="mt-3 grid grid-cols-4 gap-3 sm:grid-cols-5">
+                {displayImages.map((image) => (
                   <button
-                    key={color}
+                    key={image}
                     type="button"
-                    onClick={() => setSelectedColor(color)}
-                    className={`rounded-md border px-3 py-2 text-sm font-semibold transition cursor-pointer ${
-                      selectedColor === color
-                        ? "border-emerald-700 bg-emerald-50 text-emerald-800 ring-2 ring-emerald-700/20"
-                        : "border-stone-300 bg-white text-stone-700 hover:border-stone-400"
+                    onClick={() => setActiveImage(image)}
+                    className={`aspect-square overflow-hidden rounded-md border bg-white transition ${
+                      heroImage === image ? "border-emerald-700 ring-2 ring-emerald-700/20" : "border-stone-200 hover:border-stone-400"
                     }`}
                   >
-                    {color}
+                    <img src={image} alt={`${product.name} thumbnail`} className="h-full w-full object-cover" />
                   </button>
                 ))}
               </div>
-            </div>
-            <div>
-              <p className="mb-2 text-sm font-bold text-stone-900">Size</p>
-              <div className="flex flex-wrap gap-2">
-                {product.sizes.map((size) => (
-                  <button
-                    key={size}
-                    type="button"
-                    onClick={() => setSelectedSize(size)}
-                    className={`rounded-md border px-3 py-2 text-sm font-semibold transition cursor-pointer ${
-                      Number(selectedSize) === Number(size)
-                        ? "border-emerald-700 bg-emerald-50 text-emerald-800 ring-2 ring-emerald-700/20"
-                        : "border-stone-300 bg-white text-stone-700 hover:border-stone-400"
-                    }`}
-                  >
-                    {size}
-                  </button>
-                ))}
-              </div>
-            </div>
+            )}
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="inline-flex h-12 overflow-hidden rounded-md border border-stone-300 bg-white">
-              <button type="button" onClick={decreaseQuantity} disabled={quantity <= 1 || isOutOfStock} className="grid w-12 place-items-center text-stone-700 disabled:cursor-not-allowed disabled:text-stone-300"><MinusOutlined /></button>
-              <span className="grid w-14 place-items-center border-x border-stone-300 text-sm font-black text-stone-950">{quantity}</span>
-              <button type="button" onClick={increaseQuantity} disabled={quantity >= product.stock || isOutOfStock} className="grid w-12 place-items-center text-stone-700 disabled:cursor-not-allowed disabled:text-stone-300"><PlusOutlined /></button>
-            </div>
-            <button type="button" onClick={handleAddToCart} disabled={isOutOfStock} className="inline-flex h-12 items-center gap-2 rounded-md bg-emerald-700 px-5 text-sm font-black text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-stone-300"><ShoppingCartOutlined /> Add to cart</button>
-            <Button
-              type={isFavorite ? "primary" : "default"}
-              danger={isFavorite}
-              loading={favoriteLoading}
-              icon={isFavorite ? <HeartFilled /> : <HeartOutlined />}
-              onClick={handleToggleFavorite}
-              className="h-12 font-bold"
-            >
-              {isFavorite ? "Favorited" : "Favorite"}
-            </Button>
-          </div>
-
-          <div className="rounded-md border border-stone-200 bg-white p-5">
-            <h2 className="text-xl font-black text-stone-950">Highlights</h2>
-            <ul className="mt-4 grid gap-2 text-sm font-semibold text-stone-700 sm:grid-cols-2">{product.highlights.map((item) => <li key={item} className="rounded-md bg-stone-50 px-3 py-2">{item}</li>)}</ul>
-            <p className="mt-4 text-sm leading-6 text-stone-500">Category: <span className="font-bold text-stone-800">{product.categoryInfo?.name}</span> - {product.categoryInfo?.description}</p>
-          </div>
-        </div>
-      </section>
-
-      <section className="mx-auto grid max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:px-8">
-        <div className="rounded-md border border-stone-200 bg-white p-5 shadow-sm">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-2xl font-black text-stone-950">Comments and ratings</h2>
-            <Tag color="gold">{reviews.length} comments</Tag>
-          </div>
-          {reviews.length === 0 ? (
-            <Empty description="No comments yet" />
-          ) : (
+          <div className="min-w-0 space-y-5">
             <div className="space-y-4">
-              {reviews.map((review) => (
-                <article key={review._id || `${review.userEmail}-${review.createdAt}`} className="rounded-md border border-stone-200 bg-stone-50 p-4">
-                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 text-sm font-bold text-stone-900">
-                      <UserOutlined />
-                      <span>{review.userName || review.userEmail}</span>
-                    </div>
-                    <Rate disabled value={Number(review.rating)} />
-                  </div>
-                  <p className="text-sm leading-6 text-stone-700">{review.comment}</p>
-                  <p className="mt-2 text-xs font-semibold text-stone-400">{new Date(review.createdAt).toLocaleString("vi-VN")}</p>
-                </article>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-2 rounded-md bg-emerald-50 px-3 py-1 text-sm font-bold text-emerald-800">
+                  <TagOutlined /> {product.categoryInfo?.name}
+                </span>
+                {product.isNew && <span className="rounded-md bg-sky-50 px-3 py-1 text-sm font-bold text-sky-700">New</span>}
+                {product.bestSeller && <span className="rounded-md bg-amber-50 px-3 py-1 text-sm font-bold text-amber-700">Best seller</span>}
+              </div>
+
+              <div>
+                <h1 className="text-3xl font-black leading-tight text-stone-950 sm:text-5xl">{product.name}</h1>
+                <p className="mt-4 max-w-2xl text-base leading-7 text-stone-600">{product.description}</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 overflow-hidden rounded-md border border-stone-200 bg-white sm:grid-cols-4">
+              {stats.map((item) => (
+                <div key={item.label} className="border-b border-r border-stone-100 p-4 last:border-r-0 sm:border-b-0">
+                  <p className="text-xs font-bold uppercase text-stone-400">{item.label}</p>
+                  <p className="mt-1 text-lg font-black text-stone-950">{item.value}</p>
+                </div>
               ))}
             </div>
-          )}
-        </div>
 
-        <aside className="rounded-md border border-stone-200 bg-white p-5 shadow-sm">
-          <h3 className="text-xl font-black text-stone-950">Review reward</h3>
-          <p className="mt-2 text-sm leading-6 text-stone-600">
-            Customers can review products from successful, non-cancelled orders. Each accepted review gives 50 points and a personal discount coupon.
-          </p>
+            <div className="rounded-md border border-stone-200 bg-white p-5">
+              <div className="flex flex-wrap items-end justify-between gap-4 border-b border-stone-100 pb-5">
+                <div>
+                  <div className="flex flex-wrap items-end gap-3">
+                    <p className="text-3xl font-black text-stone-950 sm:text-4xl">{formatCurrency(variantPrice)}</p>
+                    {product.originalPrice > product.price && (
+                      <p className="pb-1 text-base font-semibold text-stone-400 line-through">{formatCurrency(product.originalPrice)}</p>
+                    )}
+                    {product.discount > 0 && <span className="mb-1 rounded-md bg-rose-600 px-3 py-1 text-sm font-black text-white">-{product.discount}%</span>}
+                  </div>
+                  {product.promotion && <p className="mt-2 text-sm font-bold text-emerald-700">{product.promotion}</p>}
+                </div>
+                <div className={isOutOfStock ? "rounded-md bg-rose-50 px-3 py-2 text-sm font-black text-rose-700" : "rounded-md bg-emerald-50 px-3 py-2 text-sm font-black text-emerald-700"}>
+                  {isOutOfStock ? "Out of stock" : `${selectedStock} left`}
+                </div>
+              </div>
 
-          {canReview ? (
-            <div className="mt-5 space-y-4">
-              {reviewableOrders.length > 1 && (
-                <Select
-                  value={reviewOrderId}
-                  onChange={setReviewOrderId}
-                  className="w-full"
-                  options={reviewableOrders.map((order) => ({
-                    value: order._id,
-                    label: `Order ${order._id.slice(-8).toUpperCase()}`,
-                  }))}
-                />
-              )}
-              <Rate value={reviewRating} onChange={setReviewRating} />
-              <Input.TextArea
-                rows={4}
-                value={reviewComment}
-                onChange={(event) => setReviewComment(event.target.value)}
-                placeholder="Share your experience after using this product..."
-              />
-              <Button type="primary" block loading={reviewSubmitting} onClick={handleSubmitReview}>
-                Submit review and claim reward
-              </Button>
+              <div className="space-y-5 py-5">
+                <div>
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <p className="text-sm font-black text-stone-950">Color</p>
+                    <p className="text-sm font-semibold text-stone-500">{selectedColor || "Not selected"}</p>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {colorOptions.map(({ color, stock }) => (
+                      <button
+                        key={color}
+                        type="button"
+                        onClick={() => {
+                          const nextVariant = variants.find((variant) => variant.color === color && Number(variant.stock) > 0)
+                            || variants.find((variant) => variant.color === color);
+                          setSelectedColor(color);
+                          setSelectedSize(nextVariant?.size || "");
+                          setQuantity(getInitialQuantity(nextVariant));
+                          setActiveImage(nextVariant?.image || nextVariant?.images?.[0] || product.images?.[0] || "");
+                        }}
+                        className={`flex h-12 items-center justify-between rounded-md border px-3 text-sm font-bold transition ${
+                          selectedColor === color
+                            ? "border-emerald-700 bg-emerald-50 text-emerald-900 ring-2 ring-emerald-700/15"
+                            : "border-stone-200 bg-white text-stone-700 hover:border-stone-400"
+                        }`}
+                      >
+                        <span className="inline-flex min-w-0 items-center gap-2">
+                          <span
+                            className="h-5 w-5 shrink-0 rounded-full border border-stone-300"
+                            style={{ backgroundColor: getColorHex(color) }}
+                          />
+                          <span className="truncate">{color}</span>
+                        </span>
+                        <span className="shrink-0 text-xs text-stone-400">{stock}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <p className="text-sm font-black text-stone-950">Size</p>
+                    <p className="text-sm font-semibold text-stone-500">{selectedSize || "Not selected"}</p>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                    {sizeOptions.map((variant) => (
+                      <button
+                        key={variant.variantId}
+                        type="button"
+                        disabled={Number(variant.stock) <= 0}
+                        onClick={() => {
+                          setSelectedSize(variant.size);
+                          setQuantity(getInitialQuantity(variant));
+                          setActiveImage(variant.image || variant.images?.[0] || product.images?.[0] || "");
+                        }}
+                        className={`min-h-14 rounded-md border px-3 py-2 text-center transition ${
+                          Number(selectedSize) === Number(variant.size)
+                            ? "border-emerald-700 bg-emerald-50 text-emerald-900 ring-2 ring-emerald-700/15"
+                            : "border-stone-200 bg-white text-stone-700 hover:border-stone-400"
+                        } disabled:cursor-not-allowed disabled:border-stone-200 disabled:bg-stone-100 disabled:text-stone-400`}
+                      >
+                        <span className="block text-base font-black">{variant.size}</span>
+                        <span className="block text-xs font-semibold">{Number(variant.stock) > 0 ? `${variant.stock} left` : "Sold out"}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3 border-t border-stone-100 pt-5 sm:flex-row">
+                <div className="inline-flex h-12 overflow-hidden rounded-md border border-stone-300 bg-white">
+                  <button type="button" onClick={decreaseQuantity} disabled={quantity <= 1 || isOutOfStock} className="grid w-12 place-items-center text-stone-700 disabled:cursor-not-allowed disabled:text-stone-300"><MinusOutlined /></button>
+                  <span className="grid w-16 place-items-center border-x border-stone-300 text-sm font-black text-stone-950">{quantity}</span>
+                  <button type="button" onClick={increaseQuantity} disabled={quantity >= selectedStock || isOutOfStock} className="grid w-12 place-items-center text-stone-700 disabled:cursor-not-allowed disabled:text-stone-300"><PlusOutlined /></button>
+                </div>
+                <button type="button" onClick={handleAddToCart} disabled={isOutOfStock || addingToCart} className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-md bg-emerald-700 px-5 text-sm font-black text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-stone-300">
+                  {addingToCart ? <Spin size="small" /> : <ShoppingCartOutlined />} {addingToCart ? "Adding..." : "Add to cart"}
+                </button>
+                <Button
+                  type={isFavorite ? "primary" : "default"}
+                  danger={isFavorite}
+                  loading={favoriteLoading}
+                  icon={isFavorite ? <HeartFilled /> : <HeartOutlined />}
+                  onClick={handleToggleFavorite}
+                  className="h-12 min-w-32 font-bold"
+                >
+                  {isFavorite ? "Favorited" : "Favorite"}
+                </Button>
+              </div>
             </div>
-          ) : (
-            <Alert
-              className="mt-5"
-              type="info"
-              showIcon
-              message="Review locked"
-              description="You need to have marked the order containing this product as 'Received' in your history. Each purchased item can only be reviewed once."
-            />
-          )}
-        </aside>
-      </section>
 
-      {similarProducts.length > 0 && (
-        <section className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-          <div className="mb-4 flex items-center justify-between"><h2 className="text-2xl font-black text-stone-950">Similar products</h2><Link to="/" className="text-sm font-bold text-emerald-700 hover:text-emerald-900">View all</Link></div>
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">{similarProducts.map((item) => <SimilarProductCard key={item.id} product={item} />)}</div>
+            <div className="rounded-md border border-stone-200 bg-white p-5">
+              <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-xl font-black text-stone-950">Highlights</h2>
+                  <p className="mt-1 text-sm font-semibold text-stone-500">{product.categoryInfo?.description}</p>
+                </div>
+                <span className="rounded-md bg-stone-100 px-3 py-1 text-sm font-bold text-stone-600">{product.stats?.favoriteCount || 0} favorites</span>
+              </div>
+              <ul className="grid gap-2 text-sm font-semibold text-stone-700 sm:grid-cols-2">
+                {product.highlights.map((item) => <li key={item} className="rounded-md bg-stone-50 px-3 py-2">{item}</li>)}
+              </ul>
+            </div>
+          </div>
         </section>
-      )}
+
+        <section className="mt-10 grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="rounded-md border border-stone-200 bg-white p-5">
+            <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-stone-100 pb-4">
+              <div>
+                <h2 className="text-2xl font-black text-stone-950">Reviews</h2>
+                <p className="mt-1 text-sm font-semibold text-stone-500">{product.reviewCount} ratings recorded</p>
+              </div>
+              <Tag color="gold">{reviews.length} comments</Tag>
+            </div>
+            {reviews.length === 0 ? (
+              <Empty description="No comments yet" />
+            ) : (
+              <div className="space-y-3">
+                {reviews.map((review) => (
+                  <article key={review._id || `${review.userEmail}-${review.createdAt}`} className="rounded-md border border-stone-200 bg-white p-4">
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 text-sm font-bold text-stone-900">
+                        <span className="grid h-8 w-8 place-items-center rounded-full bg-stone-100 text-stone-500"><UserOutlined /></span>
+                        <span>{review.userName || review.userEmail}</span>
+                      </div>
+                      <Rate disabled value={Number(review.rating)} />
+                    </div>
+                    <p className="text-sm leading-6 text-stone-700">{review.comment}</p>
+                    <p className="mt-3 text-xs font-semibold text-stone-400">{new Date(review.createdAt).toLocaleString("vi-VN")}</p>
+                  </article>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <aside className="rounded-md border border-stone-200 bg-white p-5 lg:self-start">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-xl font-black text-stone-950">Review reward</h3>
+                <p className="mt-1 text-sm font-bold text-emerald-700">50 points + coupon</p>
+              </div>
+              <StarFilled className="mt-1 text-lg text-amber-500" />
+            </div>
+
+            {canReview ? (
+              <div className="mt-5 space-y-4">
+                {reviewableOrders.length > 1 && (
+                  <Select
+                    value={reviewOrderId}
+                    onChange={setReviewOrderId}
+                    className="w-full"
+                    options={reviewableOrders.map((order) => ({
+                      value: order._id,
+                      label: `Order ${order._id.slice(-8).toUpperCase()}`,
+                    }))}
+                  />
+                )}
+                <Rate value={reviewRating} onChange={setReviewRating} />
+                <Input.TextArea
+                  rows={4}
+                  value={reviewComment}
+                  onChange={(event) => setReviewComment(event.target.value)}
+                  placeholder="Share your experience after using this product..."
+                />
+                <Button type="primary" block loading={reviewSubmitting} onClick={handleSubmitReview}>
+                  Submit review
+                </Button>
+              </div>
+            ) : (
+              <Alert
+                className="mt-5"
+                type="info"
+                showIcon
+                message="Review locked"
+                description="Available after an order is received."
+              />
+            )}
+          </aside>
+        </section>
+
+        {similarProducts.length > 0 && (
+          <section className="mt-10">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-2xl font-black text-stone-950">Similar products</h2>
+              <Link to="/" className="text-sm font-bold text-emerald-700 hover:text-emerald-900">View all</Link>
+            </div>
+            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+              {similarProducts.map((item) => <SimilarProductCard key={item.id} product={item} />)}
+            </div>
+          </section>
+        )}
+      </main>
     </div>
   );
 };

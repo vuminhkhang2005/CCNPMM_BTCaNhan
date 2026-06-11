@@ -4,6 +4,7 @@ const orderRepository = require("../repositories/orderRepository");
 const reviewRepository = require("../repositories/reviewRepository");
 const userRepository = require("../repositories/userRepository");
 const { recordViewedProduct } = require("./productEngagementService");
+const { prepareProductForStorage } = require("../utils/productVariants");
 
 // Load static fallback arrays from seed config
 const staticCategories = [
@@ -390,7 +391,10 @@ const getPositiveNumber = (val, defaultValue) => {
 
 const normalize = (value = "") => value.toString().trim().toLowerCase();
 const getCategoryInfo = (categoryId) => staticCategories.find((cat) => cat.id === categoryId);
-const attachCategory = (product) => ({ ...product, categoryInfo: getCategoryInfo(product.category) });
+const attachCategory = (product) => ({
+    ...prepareProductForStorage(product),
+    categoryInfo: getCategoryInfo(product.category),
+});
 
 const getMockUser = (email) => global.mockUsers?.find((user) => user.email === email);
 
@@ -486,6 +490,7 @@ const filterProductsArray = (query = {}) => {
     }
 
     const filtered = staticProducts.filter((product) => {
+        const productStock = prepareProductForStorage(product).stock;
         const catInfo = getCategoryInfo(product.category);
         const searchableText = normalize([
             product.name,
@@ -499,9 +504,9 @@ const filterProductsArray = (query = {}) => {
         const matchesPrice = product.price >= minPrice && product.price <= maxPrice;
         const matchesRating = product.rating >= minRating;
         const matchesStock = !stockStatus
-            || (stockStatus === "in-stock" && product.stock > 10)
-            || (stockStatus === "low-stock" && product.stock > 0 && product.stock <= 10)
-            || (stockStatus === "out-stock" && product.stock === 0);
+            || (stockStatus === "in-stock" && productStock > 10)
+            || (stockStatus === "low-stock" && productStock > 0 && productStock <= 10)
+            || (stockStatus === "out-stock" && productStock === 0);
         const matchesPromotion = !promotion
             || (promotion === "sale" && product.discount > 0)
             || (promotion === "new" && product.isNew)
@@ -558,7 +563,7 @@ const getProductsService = async (query = {}) => {
 
         const mappedProducts = products.map((prod) => {
             const categoryInfo = categories.find((cat) => cat.id === prod.category);
-            return { ...prod.toObject(), categoryInfo };
+            return { ...prepareProductForStorage(prod.toObject()), categoryInfo };
         });
 
         return {
@@ -616,7 +621,7 @@ const getProductsByCategoryService = async (query = {}) => {
         const categoryGroups = categories.map((cat) => {
             const catProducts = products
                 .filter((prod) => prod.category === cat.id)
-                .map((prod) => ({ ...prod.toObject(), categoryInfo: cat }));
+                .map((prod) => ({ ...prepareProductForStorage(prod.toObject()), categoryInfo: cat }));
             return {
                 ...cat.toObject(),
                 products: catProducts
@@ -686,7 +691,7 @@ const getProductRankingService = async (query = {}) => {
 
         const mappedProducts = paginatedProducts.map((prod) => {
             const categoryInfo = categories.find((cat) => cat.id === prod.category);
-            return { ...prod.toObject(), categoryInfo };
+            return { ...prepareProductForStorage(prod.toObject()), categoryInfo };
         });
 
         return {
@@ -771,7 +776,8 @@ const getProductDetailService = async (slug, email) => {
         const categories = await categoryRepository.findAll();
         const categoryInfo = categories.find((cat) => cat.id === product.category);
         const user = await userRepository.findByEmail(email);
-        await recordViewedProduct(email, { ...product.toObject(), categoryInfo });
+        const productData = prepareProductForStorage(product.toObject());
+        await recordViewedProduct(email, { ...productData, categoryInfo });
 
         const similarProducts = await productRepository.findSimilar({
             category: product.category,
@@ -780,7 +786,7 @@ const getProductDetailService = async (slug, email) => {
 
         const mappedSimilar = similarProducts.map((prod) => {
             const catInfo = categories.find((cat) => cat.id === prod.category);
-            return { ...prod.toObject(), categoryInfo: catInfo };
+            return { ...prepareProductForStorage(prod.toObject()), categoryInfo: catInfo };
         });
 
         const [
@@ -813,7 +819,7 @@ const getProductDetailService = async (slug, email) => {
             EC: 0,
             EM: "Product detail loaded successfully",
             product: {
-                ...product.toObject(),
+                ...productData,
                 categoryInfo,
                 stats: { buyerCount, commentCount, favoriteCount },
             },

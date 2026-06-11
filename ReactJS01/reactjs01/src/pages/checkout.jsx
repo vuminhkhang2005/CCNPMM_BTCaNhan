@@ -1,7 +1,8 @@
 import { useContext, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { AuthContext } from "../components/context/auth";
-import { CartContext } from "../components/context/cart.context";
+import { CartContext } from "../components/context/cart";
+import useLockedAsyncAction from "../hooks/useLockedAsyncAction";
 import { createOrderApi, getCouponsApi, getWalletApi, validateCouponApi } from "../util/api";
 import { ArrowLeftOutlined, CheckCircleOutlined, CreditCardOutlined, DollarOutlined, GiftOutlined, HomeOutlined, MailOutlined, PhoneOutlined, UserOutlined, WalletOutlined } from "@ant-design/icons";
 import { Alert, Button, Form, Input, Modal, Radio, Spin, Tag, notification } from "antd";
@@ -19,7 +20,8 @@ const CheckoutPage = () => {
   const { cart, clearCart } = useContext(CartContext);
 
   const [paymentMethod, setPaymentMethod] = useState("COD");
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { loading: isSubmitting, run: runSubmitOrder } = useLockedAsyncAction();
+  const { loading: couponLoading, run: runApplyCoupon } = useLockedAsyncAction();
 
   // Modals for mock payments
   const [momoModalVisible, setMomoModalVisible] = useState(false);
@@ -31,7 +33,6 @@ const CheckoutPage = () => {
   const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [couponDiscount, setCouponDiscount] = useState(0);
   const [pointsToUse, setPointsToUse] = useState(0);
-  const [couponLoading, setCouponLoading] = useState(false);
 
   useEffect(() => {
     if (auth.isAuthenticated && auth.user) {
@@ -84,8 +85,7 @@ const CheckoutPage = () => {
       return;
     }
 
-    setCouponLoading(true);
-    try {
+    await runApplyCoupon(async () => {
       const res = await validateCouponApi({ code: normalizedCode, subtotal: getSubtotal() });
       if (res?.EC === 0) {
         setAppliedCoupon(res.coupon);
@@ -97,9 +97,7 @@ const CheckoutPage = () => {
         setCouponDiscount(0);
         notification.error({ message: "Coupon", description: res?.EM || "Coupon cannot be applied." });
       }
-    } finally {
-      setCouponLoading(false);
-    }
+    });
   };
 
   const handlePointsChange = (event) => {
@@ -125,6 +123,8 @@ const CheckoutPage = () => {
       },
       items: cart.items.map((item) => ({
         productId: item.productId,
+        variantId: item.variantId,
+        sku: item.sku,
         slug: item.slug,
         name: item.name,
         price: item.price,
@@ -152,31 +152,30 @@ const CheckoutPage = () => {
   };
 
   const submitOrderToBackend = async (orderData) => {
-    setIsSubmitting(true);
-    try {
-      const res = await createOrderApi(orderData);
-      if (res && res.EC === 0) {
-        notification.success({
-          message: "Order Placed Successfully",
-          description: "Your order has been received and is being processed.",
-        });
-        await clearCart();
-        navigate("/orders");
-      } else {
+    await runSubmitOrder(async () => {
+      try {
+        const res = await createOrderApi(orderData);
+        if (res && res.EC === 0) {
+          notification.success({
+            message: "Order Placed Successfully",
+            description: "Your order has been received and is being processed.",
+          });
+          await clearCart();
+          navigate("/orders");
+        } else {
+          notification.error({
+            message: "Order Failed",
+            description: res?.EM || "An error occurred while creating your order.",
+          });
+        }
+      } catch (error) {
+        console.error(">>> Error creating order:", error);
         notification.error({
-          message: "Order Failed",
-          description: res?.EM || "An error occurred while creating your order.",
+          message: "Order Submission Failed",
+          description: "System error occurred while creating order.",
         });
       }
-    } catch (error) {
-      console.error(">>> Error creating order:", error);
-      notification.error({
-        message: "Order Submission Failed",
-        description: "System error occurred while creating order.",
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
+    });
   };
 
   const handleMomoSuccess = async () => {
@@ -335,12 +334,12 @@ const CheckoutPage = () => {
             <h3 className="text-lg font-black text-stone-950 border-b border-stone-100 pb-3">Your Order</h3>
             <div className="divide-y divide-stone-100 max-h-60 overflow-y-auto pr-1">
               {cart.items.map((item) => (
-                <div key={`${item.productId}-${item.color}-${item.size}`} className="py-3 flex items-center gap-3">
+                <div key={`${item.variantId || item.productId}-${item.color}-${item.size}`} className="py-3 flex items-center gap-3">
                   <img src={item.image} alt={item.name} className="h-12 w-12 rounded border border-stone-100 object-cover bg-stone-50" />
                   <div className="flex-1 min-w-0">
                     <h4 className="text-sm font-bold text-stone-950 truncate">{item.name}</h4>
                     <p className="text-xs text-stone-500 font-semibold">
-                      Color: {item.color} | Size: {item.size} | Qty: {item.quantity}
+                      Color: {item.color} | Size: {item.size} | Qty: {item.quantity}{item.sku ? ` | SKU: ${item.sku}` : ""}
                     </p>
                   </div>
                   <div className="text-sm font-bold text-stone-950">
@@ -363,7 +362,7 @@ const CheckoutPage = () => {
                     placeholder="RUN10, SHOE200, FREESHIP"
                     className="font-bold uppercase"
                   />
-                  <Button loading={couponLoading} onClick={() => handleApplyCoupon()}>
+                  <Button loading={couponLoading} disabled={couponLoading} onClick={() => handleApplyCoupon()}>
                     Apply
                   </Button>
                 </div>
@@ -373,8 +372,9 @@ const CheckoutPage = () => {
                       <button
                         type="button"
                         key={coupon.code}
+                        disabled={couponLoading}
                         onClick={() => handleApplyCoupon(coupon.code)}
-                        className="rounded border border-emerald-200 bg-white px-2 py-1 text-xs font-bold text-emerald-800 hover:border-emerald-700"
+                        className="rounded border border-emerald-200 bg-white px-2 py-1 text-xs font-bold text-emerald-800 hover:border-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {coupon.code}
                       </button>
@@ -461,7 +461,9 @@ const CheckoutPage = () => {
         title={null}
         footer={null}
         open={momoModalVisible}
-        onCancel={() => setMomoModalVisible(false)}
+        onCancel={() => {
+          if (!isSubmitting) setMomoModalVisible(false);
+        }}
         width={400}
         centered
         className="overflow-hidden rounded-lg"
@@ -501,9 +503,10 @@ const CheckoutPage = () => {
           <button
             type="button"
             onClick={handleMomoSuccess}
-            className="w-full py-3 bg-[#a21c6e] hover:bg-[#861259] text-white rounded font-black text-sm flex items-center justify-center gap-2 transition cursor-pointer"
+            disabled={isSubmitting}
+            className="w-full py-3 bg-[#a21c6e] hover:bg-[#861259] text-white rounded font-black text-sm flex items-center justify-center gap-2 transition cursor-pointer disabled:cursor-not-allowed disabled:bg-stone-300"
           >
-            <CheckCircleOutlined /> Simulate Payment Success
+            {isSubmitting ? <Spin size="small" /> : <CheckCircleOutlined />} Simulate Payment Success
           </button>
         </div>
       </Modal>
@@ -513,7 +516,9 @@ const CheckoutPage = () => {
         title={null}
         footer={null}
         open={vnpayModalVisible}
-        onCancel={() => setVnpayModalVisible(false)}
+        onCancel={() => {
+          if (!isSubmitting) setVnpayModalVisible(false);
+        }}
         width={480}
         centered
         styles={{ body: { padding: 0 } }}
@@ -579,9 +584,10 @@ const CheckoutPage = () => {
           <button
             type="button"
             onClick={handleVnpaySuccess}
-            className="w-full py-3 bg-[#005baa] hover:bg-[#004785] text-white rounded font-black text-sm flex items-center justify-center gap-2 transition cursor-pointer"
+            disabled={isSubmitting}
+            className="w-full py-3 bg-[#005baa] hover:bg-[#004785] text-white rounded font-black text-sm flex items-center justify-center gap-2 transition cursor-pointer disabled:cursor-not-allowed disabled:bg-stone-300"
           >
-            <CheckCircleOutlined /> Simulate Payment Confirmation
+            {isSubmitting ? <Spin size="small" /> : <CheckCircleOutlined />} Simulate Payment Confirmation
           </button>
         </div>
       </Modal>

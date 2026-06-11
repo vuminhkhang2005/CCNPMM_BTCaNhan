@@ -1,20 +1,24 @@
 import { Button, Divider, Form, Input, notification } from "antd";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowLeftOutlined, MailOutlined, LockOutlined, UserOutlined } from "@ant-design/icons";
+import useLockedAsyncAction from "../hooks/useLockedAsyncAction";
 import { createUserApi } from "../util/api";
 import authBanner from "../assets/auth_banner.png";
 
 const RegisterPage = () => {
   const navigate = useNavigate();
+  const { loading: submitting, run: runSubmit } = useLockedAsyncAction();
 
   const onFinish = async ({ name, email, password }) => {
-    const res = await createUserApi(name, email, password);
-    if (res?.EC === 0) {
-      notification.success({ message: "Register", description: res.EM || "Registration successful!" });
-      navigate("/login");
-    } else {
-      notification.error({ message: "Registration Failed", description: res?.EM || "An error occurred during registration." });
-    }
+    await runSubmit(async () => {
+      const res = await createUserApi(name, email, password);
+      if (res?.EC === 0) {
+        notification.success({ message: "Register", description: res.EM || "Registration successful!" });
+        navigate("/login");
+      } else {
+        notification.error({ message: "Registration Failed", description: res?.EM || "An error occurred during registration." });
+      }
+    });
   };
 
   return (
@@ -118,6 +122,8 @@ const RegisterPage = () => {
                 type="primary" 
                 htmlType="submit" 
                 size="large"
+                loading={submitting}
+                disabled={submitting}
                 style={{ backgroundColor: "#047857", borderColor: "#047857" }}
                 className="w-full hover:!bg-emerald-800 border-none font-semibold text-white rounded-lg h-11 shadow-sm hover:shadow transition-all duration-200"
               >

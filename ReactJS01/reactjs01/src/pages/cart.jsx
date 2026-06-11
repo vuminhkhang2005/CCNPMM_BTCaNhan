@@ -1,6 +1,6 @@
 import { useContext } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { CartContext } from "../components/context/cart.context";
+import { CartContext } from "../components/context/cart";
 import { DeleteOutlined, MinusOutlined, PlusOutlined, ShoppingCartOutlined, ArrowLeftOutlined } from "@ant-design/icons";
 import { Button, Popconfirm, Spin } from "antd";
 
@@ -16,7 +16,7 @@ const CartPage = () => {
 
   const handleQtyChange = async (item, change) => {
     const newQty = item.quantity + change;
-    await updateCartItem(item.productId, item.color, item.size, newQty);
+    await updateCartItem(item, newQty);
   };
 
   const getSubtotal = () => {
@@ -66,7 +66,7 @@ const CartPage = () => {
             <div className="rounded-md border border-stone-200 bg-white shadow-sm overflow-hidden">
               <div className="divide-y divide-stone-100">
                 {cart.items.map((item) => (
-                  <div key={`${item.productId}-${item.color}-${item.size}`} className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-4 hover:bg-stone-50/50 transition">
+                  <div key={`${item.variantId || item.productId}-${item.color}-${item.size}`} className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-4 hover:bg-stone-50/50 transition">
                     {/* Image */}
                     <div className="h-20 w-20 flex-shrink-0 overflow-hidden rounded-md border border-stone-100 bg-stone-50">
                       <img src={item.image} alt={item.name} className="h-full w-full object-cover" />
@@ -82,6 +82,7 @@ const CartPage = () => {
                       <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs font-semibold text-stone-500">
                         <span>Color: <strong className="text-stone-700">{item.color}</strong></span>
                         <span>Size: <strong className="text-stone-700">{item.size}</strong></span>
+                        {item.sku && <span>SKU: <strong className="text-stone-700">{item.sku}</strong></span>}
                       </div>
                       <div className="mt-2 text-sm font-black text-stone-950 sm:hidden">
                         {formatCurrency(item.price)}
@@ -121,7 +122,7 @@ const CartPage = () => {
                     {/* Delete action */}
                     <button
                       type="button"
-                      onClick={() => removeFromCart(item.productId, item.color, item.size)}
+                      onClick={() => removeFromCart(item)}
                       className="grid h-8 w-8 place-items-center rounded-md text-stone-400 hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer"
                     >
                       <DeleteOutlined />

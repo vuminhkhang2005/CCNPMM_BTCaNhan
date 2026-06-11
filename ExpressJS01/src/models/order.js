@@ -2,6 +2,8 @@ const mongoose = require("mongoose");
 
 const orderItemSchema = new mongoose.Schema({
     productId: { type: Number, required: true },
+    variantId: { type: String },
+    sku: { type: String },
     slug: { type: String, required: true },
     name: { type: String, required: true },
     price: { type: Number, required: true },
@@ -31,6 +33,7 @@ const orderSchema = new mongoose.Schema(
         paymentMethod: { type: String, default: "COD" }, // "COD", "MOMO", "VNPAY"
         paymentStatus: { type: String, default: "Pending" }, // "Pending", "Paid"
         status: { type: Number, default: 1 }, // 1. New, 2. Confirmed, 3. Preparing, 4. Delivering, 5. Delivered, 6. Cancelled, 7. Return processing, 8. Returned, 9. Received
+        stockReleased: { type: Boolean, default: false },
         cancelRequested: { type: Boolean, default: false },
         cancelReason: { type: String },
         cancelResolution: { type: String },

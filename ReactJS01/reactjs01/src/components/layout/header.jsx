@@ -2,7 +2,7 @@ import { useContext } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { HomeOutlined, LoginOutlined, LogoutOutlined, UserOutlined, UsergroupAddOutlined, ShoppingCartOutlined, HistoryOutlined, DashboardOutlined, IdcardOutlined } from "@ant-design/icons";
 import { AuthContext } from "../context/auth";
-import { CartContext } from "../context/cart.context";
+import { CartContext } from "../context/cart";
 import { Badge } from "antd";
 
 const Header = () => {
