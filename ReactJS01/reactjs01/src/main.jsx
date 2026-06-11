@@ -12,6 +12,7 @@ import ProductDetailPage from "./pages/product-detail.jsx";
 import CartPage from "./pages/cart.jsx";
 import CheckoutPage from "./pages/checkout.jsx";
 import OrdersPage from "./pages/orders.jsx";
+import OrderDetailPage from "./pages/order-detail.jsx";
 import AdminOrdersPage from "./pages/admin-orders.jsx";
 import ForgotPasswordPage from "./pages/forgot-password.jsx";
 import ResetPasswordPage from "./pages/reset-password.jsx";
@@ -45,6 +46,7 @@ const router = createBrowserRouter([
       { path: "cart", element: <CartPage /> },
       { path: "checkout", element: <CheckoutPage /> },
       { path: "orders", element: <OrdersPage /> },
+      { path: "orders/:id", element: <OrderDetailPage /> },
       {
         path: "admin/orders",
         element: (

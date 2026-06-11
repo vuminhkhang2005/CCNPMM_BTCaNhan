@@ -1,4 +1,5 @@
 import { useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { AuthContext } from "../components/context/auth";
 import useLockedAsyncAction from "../hooks/useLockedAsyncAction";
 import { getAdminOrdersApi, updateOrderStatusApi } from "../util/api";
@@ -6,6 +7,7 @@ import {
   CheckOutlined,
   CloseOutlined,
   DashboardOutlined,
+  EyeOutlined,
   FormOutlined,
   ReloadOutlined,
   WarningOutlined,
@@ -321,6 +323,18 @@ const AdminOrdersPage = () => {
       dataIndex: "createdAt",
       key: "createdAt",
       render: (date) => <span className="text-xs font-semibold text-stone-500">{new Date(date).toLocaleString("en-US")}</span>,
+    },
+    {
+      title: "Detail",
+      key: "detail",
+      render: (_, record) => (
+        <Link
+          to={`/orders/${record._id}`}
+          className="inline-flex items-center gap-1 rounded-md border border-stone-300 px-3 py-1.5 text-xs font-bold text-stone-700 hover:border-emerald-600 hover:text-emerald-700"
+        >
+          <EyeOutlined /> View
+        </Link>
+      ),
     },
   ];
 

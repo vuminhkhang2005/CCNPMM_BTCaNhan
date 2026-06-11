@@ -319,6 +319,12 @@ const OrdersPage = () => {
                       />
                     )}
                     <OrderStatusTag status={selectedOrder.status} cancelRequested={selectedOrder.cancelRequested} />
+                    <Link
+                      to={`/orders/${selectedOrder._id}`}
+                      className="inline-flex items-center rounded-md border border-stone-300 px-3 py-1 text-xs font-bold text-stone-700 hover:border-emerald-600 hover:text-emerald-700"
+                    >
+                      View detail
+                    </Link>
                   </div>
                 </div>
 
